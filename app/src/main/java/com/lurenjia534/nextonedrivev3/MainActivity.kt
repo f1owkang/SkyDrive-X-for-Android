@@ -138,7 +138,7 @@ fun BottomNavigationBar(navController: NavController) {
     }
 }
 
-/** 多账户示例 */
+/** 多账户页面 */
 @Composable
 fun ProfileScreen() {
     var showDialog by remember { mutableStateOf(false) }
@@ -176,84 +176,6 @@ fun ProfileScreen() {
             },
             onDismiss = { showDialog = false }
         )
-    }
-}
-
-@Composable
-fun SettingsScreen() {
-    var isDarkMode by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Text(
-            text = "设置",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold
-        )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Settings,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Text(
-                text = "外观",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        // 外观设置部分
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { isDarkMode = !isDarkMode }
-                    .padding(horizontal = 12.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = if (isDarkMode) Icons.Outlined.DarkMode else Icons.Outlined.LightMode,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Column {
-                        Text(
-                            text = "深色模式",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Text(
-                            text = if (isDarkMode) "已启用" else "已关闭",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Switch(
-                    checked = isDarkMode,
-                    onCheckedChange = { isDarkMode = it }
-                )
-            }
-        }
     }
 }
 
@@ -347,4 +269,82 @@ fun AddCloudDisk(
             }
         }
     )
+}
+
+@Composable
+fun SettingsScreen() {
+    var isDarkMode by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "设置",
+            style = MaterialTheme.typography.headlineLarge,
+            fontWeight = FontWeight.Bold
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Settings,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "外观",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        // 外观设置部分
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { isDarkMode = !isDarkMode }
+                    .padding(horizontal = 12.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (isDarkMode) Icons.Outlined.DarkMode else Icons.Outlined.LightMode,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Column {
+                        Text(
+                            text = "深色模式",
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Text(
+                            text = if (isDarkMode) "已启用" else "已关闭",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Switch(
+                    checked = isDarkMode,
+                    onCheckedChange = { isDarkMode = it }
+                )
+            }
+        }
+    }
 }
