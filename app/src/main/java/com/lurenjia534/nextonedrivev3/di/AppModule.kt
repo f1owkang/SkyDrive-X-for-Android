@@ -3,7 +3,6 @@ package com.lurenjia534.nextonedrivev3.di
 import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
-import com.lurenjia534.nextonedrivev2.AuthRepository.AuthenticationCallbackProvider
 import com.lurenjia534.nextonedrivev3.AuthRepository.AuthenticationManager
 import com.lurenjia534.nextonedrivev3.AuthRepository.TokenManager
 import com.lurenjia534.nextonedrivev3.R
