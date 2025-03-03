@@ -48,7 +48,7 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:2.51.1")
     // other
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    implementation("androidx.navigation:navigation-compose:2.8.7")
+    implementation("androidx.navigation:navigation-compose:2.8.8")
     // http request library
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
