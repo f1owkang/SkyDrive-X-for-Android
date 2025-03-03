@@ -1,10 +1,9 @@
 // 文件 com.lurenjia534.nextonedrivev2.AuthRepository.AuthenticationCallbackProvider.kt
 
-package com.lurenjia534.nextonedrivev2.AuthRepository
+package com.lurenjia534.nextonedrivev3.AuthRepository
 
 import android.util.Log
 import androidx.compose.runtime.MutableState
-import com.lurenjia534.nextonedrivev3.AuthRepository.AuthenticationManager
 import com.microsoft.identity.client.AuthenticationCallback
 import com.microsoft.identity.client.IAuthenticationResult
 import com.microsoft.identity.client.SilentAuthenticationCallback
