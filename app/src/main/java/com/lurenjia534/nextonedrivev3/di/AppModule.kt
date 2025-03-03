@@ -67,12 +67,14 @@ object AppModule {
     @Provides
     @Singleton
     fun provideAuthViewModel(
+        @ApplicationContext context: Context,
         authenticationManager: AuthenticationManager,
         accessTokenState: MutableState<String?>,
         isMsalInitializedState: MutableState<Boolean>,
         tokenManager: TokenManager
     ): AuthViewModel {
         return AuthViewModel(
+            context = context,
             authenticationManager = authenticationManager,
             accessTokenState = accessTokenState,
             isMsalInitializedState = isMsalInitializedState,
