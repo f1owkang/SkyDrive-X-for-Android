@@ -1,8 +1,10 @@
 package com.lurenjia534.nextonedrivev3.AuthRepository
 
 import android.app.Activity
+import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -11,6 +13,7 @@ import com.microsoft.identity.client.AuthenticationCallback
 import com.microsoft.identity.client.IAuthenticationResult
 import com.microsoft.identity.client.exception.MsalException
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +38,8 @@ class AuthViewModel @Inject constructor(
     private val authenticationManager: AuthenticationManager,
     val accessTokenState: MutableState<String?>,
     val isMsalInitializedState: MutableState<Boolean>,
-    private val tokenManager: TokenManager
+    private val tokenManager: TokenManager,
+    @ApplicationContext private val context: Context
 ) : ViewModel() {
 
     // 保存所有账户的LiveData
@@ -49,10 +53,17 @@ class AuthViewModel @Inject constructor(
     private val _authMessage = MutableLiveData<AuthMessage>()
     val authMessage: LiveData<AuthMessage> = _authMessage
 
+    // 深色模式状态
+    private val _isDarkMode = MutableLiveData<Boolean>()
+    val isDarkMode: LiveData<Boolean> = _isDarkMode
+
     init {
         authenticationManager.initializeMSAL()
         // 加载已保存的账户
         loadSavedAccounts()
+        
+        // 加载深色模式偏好设置
+        loadDarkModePreference()
     }
 
     private fun loadSavedAccounts() {
@@ -211,5 +222,30 @@ class AuthViewModel @Inject constructor(
     // 可以添加一个方法来清除消息
     fun clearAuthMessage() {
         _authMessage.value = null
+    }
+
+    /**
+     * 加载深色模式偏好设置
+     */
+    private fun loadDarkModePreference() {
+        val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        _isDarkMode.value = sharedPreferences.getBoolean("dark_mode", false)
+    }
+    
+    /**
+     * 更新深色模式偏好设置
+     */
+    fun updateDarkMode(isDarkMode: Boolean) {
+        _isDarkMode.value = isDarkMode
+        
+        // 保存到SharedPreferences
+        val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        sharedPreferences.edit().putBoolean("dark_mode", isDarkMode).apply()
+        
+        // 发送深色模式已更新的消息
+        _authMessage.value = AuthMessage(
+            message = if (isDarkMode) "已切换到深色模式" else "已切换到浅色模式",
+            isError = false
+        )
     }
 } 
