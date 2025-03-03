@@ -10,7 +10,7 @@ import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import com.lurenjia534.nextonedrivev2.workers.TokenRefreshWorker
+import com.lurenjia534.nextonedrivev3.AuthRepository.TokenRefreshWorker
 import com.microsoft.identity.client.*
 import com.microsoft.identity.client.IMultipleAccountPublicClientApplication
 import com.microsoft.identity.client.exception.MsalException
@@ -136,8 +136,9 @@ class AuthenticationManager @Inject constructor(
             .putString("CLIENT_ID", clientId)
             .build()
 
+        // 改为每45分钟运行一次，避免接近60分钟的令牌有效期
         val workRequest = PeriodicWorkRequestBuilder<TokenRefreshWorker>(
-            58, TimeUnit.MINUTES
+            45, TimeUnit.MINUTES
         )
             .setInputData(inputData)
             .build()
@@ -158,5 +159,15 @@ class AuthenticationManager @Inject constructor(
             tokenManager.saveAccountName(accountName)
         }
         Log.d("Token Persistence", "令牌已成功保存。")
+    }
+
+    // 添加这个新方法，用于获取MSAL实例
+    fun getMsalInstance(): IPublicClientApplication? {
+        return if (::multipleAccountApp.isInitialized) {
+            multipleAccountApp
+        } else {
+            Log.e("AuthenticationManager", "MSAL尚未初始化")
+            null
+        }
     }
 }
