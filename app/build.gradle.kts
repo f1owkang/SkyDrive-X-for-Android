@@ -56,7 +56,12 @@ dependencies {
     implementation ("com.squareup.okhttp3:logging-interceptor:4.12.0")
     // msal android
     implementation("com.microsoft.identity.client:msal:5.9.0")
+    // kotlinx serialization
     implementation ("androidx.compose.runtime:runtime-livedata:1.7.8")
+    // media3
+    implementation("androidx.media3:media3-exoplayer:1.5.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.5.1")
+    implementation("androidx.media3:media3-ui:1.5.1")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
