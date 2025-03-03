@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
-import com.lurenjia534.nextonedrivev2.workers.TokenRefreshWorker
+import com.lurenjia534.nextonedrivev3.AuthRepository.TokenRefreshWorker
 import com.lurenjia534.nextonedrivev3.AuthRepository.TokenManager
 import javax.inject.Inject
 import javax.inject.Singleton
