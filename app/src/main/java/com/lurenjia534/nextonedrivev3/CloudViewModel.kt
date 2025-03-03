@@ -1,6 +1,8 @@
 package com.lurenjia534.nextonedrivev3
 
 import android.content.Context
+import android.content.ContentResolver
+import android.net.Uri
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -12,13 +14,25 @@ import com.lurenjia534.nextonedrivev3.data.repository.OneDriveRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
+import android.util.Log
+import com.lurenjia534.nextonedrivev3.notification.UploadNotificationService
+import kotlinx.coroutines.Dispatchers
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody
+import okio.Buffer
+import java.io.BufferedInputStream
+import java.io.IOException
 
 @HiltViewModel
 class CloudViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val oneDriveRepository: OneDriveRepository,
-    private val authViewModel: AuthViewModel  // 注入 AuthViewModel
+    private val authViewModel: AuthViewModel,
+    private val uploadNotificationService: UploadNotificationService  // 新增
 ) : ViewModel() {
 
     // 账户信息
@@ -62,6 +76,18 @@ class CloudViewModel @Inject constructor(
     // 云盘信息加载状态
     private val _isDriveInfoLoading = MutableLiveData<Boolean>(false)
     val isDriveInfoLoading: LiveData<Boolean> = _isDriveInfoLoading
+
+    // 创建状态流来跟踪上传进度
+    private val _uploadingState = MutableStateFlow<UploadingState>(UploadingState.Idle)
+    val uploadingState: StateFlow<UploadingState> = _uploadingState.asStateFlow()
+
+    // 上传状态封装类
+    sealed class UploadingState {
+        object Idle : UploadingState()
+        data class Uploading(val progress: Int, val fileName: String) : UploadingState()
+        data class Success(val item: DriveItem) : UploadingState()
+        data class Error(val message: String) : UploadingState()
+    }
 
     init {
         // 加载深色模式偏好设置
@@ -236,5 +262,229 @@ class CloudViewModel @Inject constructor(
      */
     fun refreshDriveInfo() {
         loadDriveInfo()
+    }
+
+    /**
+     * 上传照片 - 添加更多日志
+     */
+    fun uploadPhoto(contentResolver: ContentResolver, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                _uploadingState.value = UploadingState.Uploading(0, "")
+                
+                val token = _accountToken.value ?: ""
+                val currentFolderId = _currentFolderId.value ?: "root"
+                
+                // 添加日志
+                Log.d("CloudViewModel", "开始上传照片，当前文件夹ID: $currentFolderId")
+                
+                // 获取文件名和MIME类型
+                val fileName = getFileNameFromUri(contentResolver, uri) ?: "photo_${System.currentTimeMillis()}.jpg"
+                val mimeType = getMimeType(contentResolver, uri) ?: "image/jpeg"
+                
+                Log.d("CloudViewModel", "文件名: $fileName, MIME类型: $mimeType")
+                
+                // 打开输入流
+                contentResolver.openInputStream(uri)?.use { inputStream ->
+                    Log.d("CloudViewModel", "成功打开输入流，准备上传")
+                    
+                    val result = oneDriveRepository.uploadPhoto(
+                        token = token,
+                        parentId = currentFolderId,
+                        fileName = fileName,
+                        inputStream = inputStream,
+                        mimeType = mimeType
+                    )
+                    
+                    result.onSuccess { item ->
+                        Log.d("CloudViewModel", "上传成功: ${item.name}")
+                        _uploadingState.value = UploadingState.Success(item)
+                        // 刷新文件列表
+                        refreshCurrentFolder()
+                    }.onFailure { error ->
+                        val errorMsg = "上传照片失败: ${error.message}"
+                        Log.e("CloudViewModel", errorMsg)
+                        _errorMessage.value = errorMsg
+                        _uploadingState.value = UploadingState.Error(errorMsg)
+                        
+                        // 检查是否是token过期问题并处理
+                        authViewModel.checkAndHandleTokenExpiration(error.message) {
+                            _accountToken.value = authViewModel.accessTokenState.value
+                        }
+                    }
+                } ?: run {
+                    val errorMsg = "无法读取照片文件"
+                    Log.e("CloudViewModel", errorMsg)
+                    _errorMessage.value = errorMsg
+                    _uploadingState.value = UploadingState.Error(errorMsg)
+                }
+            } catch (e: Exception) {
+                val errorMsg = "上传照片时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _uploadingState.value = UploadingState.Error(errorMsg)
+            }
+        }
+    }
+
+    /**
+     * 创建文件夹
+     */
+    fun createFolder(folderName: String) {
+        if (folderName.isBlank()) {
+            _errorMessage.value = "文件夹名称不能为空"
+            return
+        }
+        
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                
+                val token = _accountToken.value ?: ""
+                val currentFolderId = _currentFolderId.value ?: "root"
+                
+                val result = oneDriveRepository.createFolder(
+                    token = token,
+                    parentId = currentFolderId,
+                    folderName = folderName
+                )
+                
+                result.onSuccess { item ->
+                    _errorMessage.value = null
+                    // 刷新文件列表
+                    refreshCurrentFolder()
+                }.onFailure { error ->
+                    val errorMsg = "创建文件夹失败: ${error.message}"
+                    _errorMessage.value = errorMsg
+                    
+                    // 检查是否是token过期问题并处理
+                    authViewModel.checkAndHandleTokenExpiration(error.message) {
+                        _accountToken.value = authViewModel.accessTokenState.value
+                    }
+                }
+                
+                _isLoading.value = false
+            } catch (e: Exception) {
+                val errorMsg = "创建文件夹时发生错误: ${e.message}"
+                _errorMessage.value = errorMsg
+                _isLoading.value = false
+            }
+        }
+    }
+
+    // 工具方法：从Uri获取文件名
+    private fun getFileNameFromUri(contentResolver: ContentResolver, uri: Uri): String? {
+        var fileName: String? = null
+        contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val displayNameIndex = cursor.getColumnIndex("_display_name")
+                if (displayNameIndex != -1) {
+                    fileName = cursor.getString(displayNameIndex)
+                }
+            }
+        }
+        return fileName
+    }
+
+    // 工具方法：获取MIME类型
+    private fun getMimeType(contentResolver: ContentResolver, uri: Uri): String? {
+        return contentResolver.getType(uri)
+    }
+
+    // 添加文件监听进度的请求体实现
+    private inner class ProgressRequestBody(
+        private val content: ByteArray,
+        private val contentType: String,
+        private val fileName: String
+    ) : RequestBody() {
+        override fun contentType() = contentType.toMediaTypeOrNull()
+        
+        override fun contentLength() = content.size.toLong()
+        
+        override fun writeTo(sink: okio.BufferedSink) {
+            var uploadedBytes = 0L
+            val totalBytes = contentLength()
+            val buffer = Buffer()
+            val chunk = 4096L // 每次写入4KB
+            
+            var offset = 0
+            while (offset < content.size) {
+                val chunkSize = minOf(chunk.toInt(), content.size - offset)
+                buffer.write(content, offset, chunkSize)
+                sink.write(buffer, chunkSize.toLong())
+                
+                offset += chunkSize
+                uploadedBytes += chunkSize
+                
+                // 计算进度0-100
+                val progress = ((uploadedBytes.toFloat() / totalBytes) * 100).toInt()
+                
+                // 更新UI和通知
+                viewModelScope.launch(Dispatchers.Main) {
+                    _uploadingState.value = UploadingState.Uploading(progress, fileName)
+                    uploadNotificationService.showUploadProgressNotification(fileName, progress)
+                }
+                
+                buffer.clear()
+            }
+        }
+    }
+    
+    // 修改uploadFile方法使用进度监听
+    fun uploadFile(contentResolver: ContentResolver, uri: Uri) {
+        viewModelScope.launch {
+            try {
+                val token = _accountToken.value ?: ""
+                val currentFolderId = _currentFolderId.value ?: "root"
+                
+                // 获取文件名和MIME类型
+                val fileName = getFileNameFromUri(contentResolver, uri) ?: "file_${System.currentTimeMillis()}"
+                val mimeType = getMimeType(contentResolver, uri) ?: "application/octet-stream"
+                
+                // 设置初始状态
+                _uploadingState.value = UploadingState.Uploading(0, fileName)
+                uploadNotificationService.showUploadProgressNotification(fileName, 0)
+                
+                // 读取文件内容以便使用自定义请求体
+                val inputStream = contentResolver.openInputStream(uri)
+                if (inputStream != null) {
+                    val bytes = inputStream.readBytes()
+                    inputStream.close()
+                    
+                    // 使用自定义请求体上传
+                    val result = oneDriveRepository.uploadFileWithProgress(
+                        token = token,
+                        parentId = currentFolderId,
+                        fileName = fileName,
+                        fileContent = ProgressRequestBody(bytes, mimeType, fileName),
+                        mimeType = mimeType
+                    )
+                    
+                    result.onSuccess { item ->
+                        Log.d("CloudViewModel", "上传成功: ${item.name}")
+                        _uploadingState.value = UploadingState.Success(item)
+                        uploadNotificationService.completeUploadNotification(fileName, true)
+                        refreshCurrentFolder()
+                    }.onFailure { error ->
+                        val errorMsg = "上传文件失败: ${error.message}"
+                        Log.e("CloudViewModel", errorMsg)
+                        _errorMessage.value = errorMsg
+                        _uploadingState.value = UploadingState.Error(errorMsg)
+                        uploadNotificationService.completeUploadNotification(fileName, false)
+                    }
+                } else {
+                    val errorMsg = "无法读取文件"
+                    _errorMessage.value = errorMsg
+                    _uploadingState.value = UploadingState.Error(errorMsg)
+                    uploadNotificationService.completeUploadNotification(fileName, false)
+                }
+            } catch (e: Exception) {
+                val errorMsg = "上传文件时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _uploadingState.value = UploadingState.Error(errorMsg)
+                uploadNotificationService.completeUploadNotification("文件", false)
+            }
+        }
     }
 } 
