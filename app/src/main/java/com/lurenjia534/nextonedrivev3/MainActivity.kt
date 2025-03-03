@@ -702,8 +702,7 @@ fun AccountDetailsDialog(
                 } else {
                     LabeledValue(
                         label = "账户名称",
-                        value = account.name,
-                        modifier = Modifier.weight(1f)
+                        value = account.name
                     )
                 }
                 
