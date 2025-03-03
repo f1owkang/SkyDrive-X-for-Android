@@ -37,6 +37,9 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -644,6 +647,10 @@ fun AccountDetailsDialog(
     var isEditing by remember { mutableStateOf(false) }
     var editedName by remember { mutableStateOf(account.name) }
     var showCopyMessage by remember { mutableStateOf<String?>(null) }
+    var isRefreshing by remember { mutableStateOf(false) }
+    
+    // 获取AuthViewModel
+    val authViewModel: AuthViewModel = hiltViewModel()
     
     // 显示复制成功消息
     showCopyMessage?.let { message ->
@@ -804,6 +811,43 @@ fun AccountDetailsDialog(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
+                }
+                
+                // 添加手动刷新令牌按钮
+                Button(
+                    onClick = {
+                        isRefreshing = true
+                        // 手动触发刷新令牌
+                        authViewModel.refreshTokenManually(account.id) { success ->
+                            isRefreshing = false
+                            if (success) {
+                                showCopyMessage = "令牌已成功刷新"
+                            } else {
+                                showCopyMessage = "令牌刷新失败"
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isRefreshing, // 刷新过程中禁用按钮
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isRefreshing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(if (isRefreshing) "正在刷新..." else "刷新令牌")
+                    }
                 }
                 
                 // 显示复制成功消息
