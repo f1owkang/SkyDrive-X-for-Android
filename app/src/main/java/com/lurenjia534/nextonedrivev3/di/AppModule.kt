@@ -15,6 +15,7 @@ import dagger.hilt.components.SingletonComponent
 import org.json.JSONObject
 import javax.inject.Singleton
 import com.lurenjia534.nextonedrivev3.AuthRepository.AuthViewModel
+import com.lurenjia534.nextonedrivev3.notification.UploadNotificationService
 
 @Module
 @InstallIn(SingletonComponent::class)
@@ -80,5 +81,11 @@ object AppModule {
             isMsalInitializedState = isMsalInitializedState,
             tokenManager = tokenManager
         )
+    }
+
+    @Provides
+    @Singleton
+    fun provideUploadNotificationService(@ApplicationContext context: Context): UploadNotificationService {
+        return UploadNotificationService(context)
     }
 } 
