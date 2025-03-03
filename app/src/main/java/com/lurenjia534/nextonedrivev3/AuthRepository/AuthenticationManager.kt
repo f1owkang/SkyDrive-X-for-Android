@@ -174,4 +174,9 @@ class AuthenticationManager @Inject constructor(
             null
         }
     }
+
+    // 添加获取 clientId 的方法
+    fun getClientId(): String? {
+        return clientId
+    }
 }

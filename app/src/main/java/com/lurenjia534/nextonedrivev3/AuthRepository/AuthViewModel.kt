@@ -4,11 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import com.lurenjia534.nextonedrivev2.AuthRepository.AuthenticationCallbackProvider
 import com.microsoft.identity.client.AuthenticationCallback
 import com.microsoft.identity.client.IAuthenticationResult
 import com.microsoft.identity.client.IMultipleAccountPublicClientApplication
@@ -24,6 +22,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import androidx.work.Constraints
+import androidx.work.Data
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.BackoffPolicy
+import com.lurenjia534.nextonedrivev3.R
+import java.util.concurrent.TimeUnit
 
 // 账户数据类
 data class AccountInfo(
@@ -69,6 +76,9 @@ class AuthViewModel @Inject constructor(
         
         // 加载深色模式偏好设置
         loadDarkModePreference()
+        
+        // 添加：启动自动令牌刷新
+        scheduleTokenRefreshWorker()
     }
 
     private fun loadSavedAccounts() {
@@ -157,6 +167,9 @@ class AuthViewModel @Inject constructor(
                         _accounts.value = _accounts.value  // 触发LiveData的更新
                     }
                 }
+                
+                // 添加：在成功认证后再次调度令牌刷新
+                scheduleTokenRefreshWorker()
                 
                 Log.d("MSAL Auth", "成功获取令牌: ${authenticationResult.accessToken}")
                 
@@ -440,6 +453,24 @@ class AuthViewModel @Inject constructor(
                         isError = true
                     )
                 }
+            }
+        }
+    }
+
+    // 修改调度令牌刷新任务方法
+    private fun scheduleTokenRefreshWorker() {
+        // 检查是否有已保存的账户
+        val accounts = tokenManager.getMultipleAccounts()
+        val accountId = tokenManager.getAccountId()
+        
+        if (accounts.isNotEmpty() || accountId != null) {
+            try {
+                // 直接委托给AuthenticationManager处理令牌刷新调度
+                // 它已经有了正确处理clientId的逻辑
+                authenticationManager.scheduleTokenRefresh()
+                Log.d("AuthViewModel", "已委托AuthenticationManager调度令牌自动刷新任务")
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "调度令牌刷新任务出错: ${e.message}")
             }
         }
     }
