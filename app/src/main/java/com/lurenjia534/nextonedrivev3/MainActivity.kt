@@ -146,7 +146,7 @@ fun MainScreen(onAddAccount: (String) -> Unit) {
     }
 
     Scaffold(
-        bottomBar = { BottomNavigationBar(navController = navController) },
+        bottomBar = { MainBottomNavigationBar(navController = navController) },
         snackbarHost = {
             if (showSnackbar && snackbarMessage != null) {
                 Snackbar(
@@ -185,7 +185,7 @@ fun MainScreen(onAddAccount: (String) -> Unit) {
 
 /** 底部导航栏组件 */
 @Composable
-fun BottomNavigationBar(navController: NavController) {
+fun MainBottomNavigationBar(navController: NavController) {
     val items = listOf(
         BottomNavItem.Profile,
         BottomNavItem.Settings
