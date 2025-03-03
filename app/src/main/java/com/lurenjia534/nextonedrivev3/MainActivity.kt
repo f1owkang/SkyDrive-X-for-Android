@@ -3,7 +3,6 @@ package com.lurenjia534.nextonedrivev3
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -60,11 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.lurenjia534.nextonedrivev2.AuthRepository.AuthenticationCallbackProvider
-import com.lurenjia534.nextonedrivev3.AuthRepository.TokenManager
-import com.lurenjia534.nextonedrivev3.AuthRepository.AuthenticationManager
 import com.lurenjia534.nextonedrivev3.AuthRepository.AuthViewModel
-import com.lurenjia534.nextonedrivev3.R
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.LaunchedEffect
