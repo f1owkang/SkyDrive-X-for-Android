@@ -1,15 +1,5 @@
 package com.lurenjia534.nextonedrivev3
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -20,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.lurenjia534.nextonedrivev3.ui.theme.NextOneDriveV3Theme
 import dagger.hilt.android.AndroidEntryPoint
@@ -40,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CloudOff
@@ -80,6 +72,35 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import kotlin.text.toFloat
+import android.net.Uri
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import com.lurenjia534.nextonedrivev3.CloudViewModel.UploadingState
+import kotlinx.coroutines.launch
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 @AndroidEntryPoint
 class CloudActivity : ComponentActivity() {
@@ -207,114 +228,340 @@ fun FilesScreen(viewModel: CloudViewModel) {
     val isLoading by viewModel.isLoading.observeAsState(false)
     val errorMessage by viewModel.errorMessage.observeAsState(null)
     val currentFolderStack by viewModel.currentFolderStack.observeAsState(mutableListOf())
+    val context = LocalContext.current
     
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // 显示当前路径导航栏
-        if (currentFolderStack.isNotEmpty()) {
-            Surface(
-                tonalElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { viewModel.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "返回上级目录"
-                        )
-                    }
-                    
-                    Text(
-                        text = currentFolderStack.lastOrNull()?.name ?: "根目录",
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    // 刷新按钮
-                    IconButton(onClick = { viewModel.refreshCurrentFolder() }) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "刷新"
-                        )
-                    }
-                }
-            }
+    // SnackbarHostState控制Snackbar的显示
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+    
+    // 控制对话框显示的状态
+    var showOptionsDialog by remember { mutableStateOf(false) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    
+    // 注册启动多图片选择器的结果处理
+    val multiplePhotoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            // 上传选中的多张照片
+            viewModel.uploadMultiplePhotos(context.contentResolver, uris)
         }
-        
-        // 显示错误信息
-        errorMessage?.let {
-            Surface(
-                color = MaterialTheme.colorScheme.errorContainer,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = it,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium
+    }
+    
+    // 注册启动通用文件选择器的结果处理
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            viewModel.uploadFile(context.contentResolver, it)
+        }
+    }
+    
+    // 多个权限请求启动器（用于Android 13+）
+    val multiplePermissionsLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.values.all { it }) {
+            // 所有权限都被授予
+            filePickerLauncher.launch("*/*")
+        } else {
+            // 至少一个权限被拒绝
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "需要存储权限才能上传文件",
+                    duration = SnackbarDuration.Long
                 )
             }
         }
-        
-        // 显示加载指示器或内容
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(if (errorMessage == null) 0.dp else 8.dp)
+    }
+    
+    // 单个权限请求启动器（用于Android 12及以下）
+    val singlePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            filePickerLauncher.launch("*/*")
+        } else {
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "需要存储权限才能上传文件",
+                    duration = SnackbarDuration.Long
+                )
+            }
+        }
+    }
+    
+    // 通知权限请求
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // 权限已授予，可以显示通知
+        } else {
+            // 权限被拒绝，显示提示
+            coroutineScope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "需要通知权限才能显示上传进度",
+                    duration = SnackbarDuration.Long
+                )
+            }
+        }
+    }
+    
+    // 检查并请求通知权限
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+    
+    // 请求存储权限并启动文件选择器的函数
+    fun requestStoragePermissionAndPickFile() {
+        when {
+            // Android 13+ (API 33+)：请求媒体特定权限
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                multiplePermissionsLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.READ_MEDIA_IMAGES,
+                        Manifest.permission.READ_MEDIA_VIDEO,
+                        Manifest.permission.READ_MEDIA_AUDIO
+                    )
+                )
+            }
+            // Android 6.0-12L：请求READ_EXTERNAL_STORAGE
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> {
+                when {
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.READ_EXTERNAL_STORAGE
+                    ) == PackageManager.PERMISSION_GRANTED -> {
+                        filePickerLauncher.launch("*/*")
+                    }
+                    else -> {
+                        singlePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
+                    }
+                }
+            }
+            // Android 5.1及以下：不需要动态权限请求
+            else -> {
+                filePickerLauncher.launch("*/*")
+            }
+        }
+    }
+    
+    // 监视上传状态
+    val uploadingState by viewModel.uploadingState.collectAsState()
+    
+    // 显示上传进度对话框
+    when (val state = uploadingState) {
+        is UploadingState.Uploading -> {
+            UploadProgressDialog(
+                uploadingState = state,
+                onDismiss = {}
+            )
+        }
+        else -> { /* 其他状态不显示对话框 */ }
+    }
+    
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            } else if (driveItems.isEmpty() && errorMessage == null) {
-                // 空文件夹视图
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+            // 显示当前路径导航栏
+            if (currentFolderStack.isNotEmpty()) {
+                Surface(
+                    tonalElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FolderOpen,
-                        contentDescription = null,
-                        modifier = Modifier.size(48.dp),
-                        tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { viewModel.navigateUp() }) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "返回上级目录"
+                            )
+                        }
+                        
+                        Text(
+                            text = currentFolderStack.lastOrNull()?.name ?: "根目录",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        
+                        // 刷新按钮
+                        IconButton(onClick = { viewModel.refreshCurrentFolder() }) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "刷新"
+                            )
+                        }
+                    }
+                }
+            }
+            
+            // 显示错误信息
+            errorMessage?.let {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
-                        text = "此文件夹为空",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = it,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
-            } else {
-                // 文件列表
-                LazyColumn(
-                    contentPadding = PaddingValues(vertical = 8.dp)
-                ) {
-                    items(driveItems) { item ->
-                        FileListItem(
-                            driveItem = item,
-                            onClick = {
-                                if (item.isFolder) {
-                                    viewModel.openFolder(item)
-                                } else {
-                                    // TODO: 处理文件点击
-                                }
-                            }
+            }
+            
+            // 显示加载指示器或内容
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (errorMessage == null) 0.dp else 8.dp)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                } else if (driveItems.isEmpty() && errorMessage == null) {
+                    // 空文件夹视图
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "此文件夹为空",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    // 文件列表
+                    LazyColumn(
+                        contentPadding = PaddingValues(
+                            top = 8.dp,
+                            bottom = 80.dp,
+                            start = 0.dp,
+                            end = 0.dp
+                        ) // 添加底部padding，防止FAB遮挡内容
+                    ) {
+                        items(driveItems) { item ->
+                            FileListItem(
+                                driveItem = item,
+                                onClick = {
+                                    if (item.isFolder) {
+                                        viewModel.openFolder(item)
+                                    } else {
+                                        // TODO: 处理文件点击
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
+        
+        // 添加浮动操作按钮(FAB)
+        FloatingActionButton(
+            onClick = { showOptionsDialog = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            containerColor = MaterialTheme.colorScheme.primary
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "添加文件或文件夹"
+            )
+        }
+        
+        // 显示选项对话框
+        if (showOptionsDialog) {
+            FileOperationsDialog(
+                onDismiss = { showOptionsDialog = false },
+                onCreateFolder = {
+                    showOptionsDialog = false
+                    showCreateFolderDialog = true
+                },
+                onUploadPhoto = {
+                    showOptionsDialog = false
+                    // 启动多图片选择器
+                    multiplePhotoPickerLauncher.launch("image/*")
+                },
+                onUploadFile = {
+                    showOptionsDialog = false
+                    requestStoragePermissionAndPickFile()
+                }
+            )
+        }
+
+        // 创建文件夹对话框
+        if (showCreateFolderDialog) {
+            CreateFolderDialog(
+                onDismiss = { showCreateFolderDialog = false },
+                onCreateFolder = { folderName ->
+                    viewModel.createFolder(folderName)
+                    showCreateFolderDialog = false
+                }
+            )
+        }
+
+        // 上传状态观察 - 使用Snackbar替代Toast
+        LaunchedEffect(uploadingState) {
+            when (val state = uploadingState) {
+                is UploadingState.Success -> {
+                    // 显示上传成功的提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "文件 ${state.item.name} 上传成功",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+                is UploadingState.Error -> {
+                    // 显示错误提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = state.message,
+                            duration = SnackbarDuration.Long,
+                            actionLabel = "确定"
+                        )
+                    }
+                }
+                else -> { /* 其他状态不做处理 */ }
+            }
+        }
+        
+        // 添加SnackbarHost
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp) // 确保不被底部导航栏遮挡
+        )
     }
 }
 
@@ -843,6 +1090,217 @@ fun StorageInfoItem(label: String, value: String, icon: ImageVector, tint: Color
             text = label,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+fun FileOperationsDialog(
+    onDismiss: () -> Unit,
+    onCreateFolder: () -> Unit,
+    onUploadPhoto: () -> Unit,
+    onUploadFile: () -> Unit
+) {
+    // 选择的选项
+    var selectedOption by remember { mutableStateOf<String?>(null) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("文件操作") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // 新建文件夹选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedOption = "createFolder" }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selectedOption == "createFolder",
+                        onClick = { selectedOption = "createFolder" }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "新建文件夹",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+                
+                // 上传照片选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedOption = "uploadPhoto" }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selectedOption == "uploadPhoto",
+                        onClick = { selectedOption = "uploadPhoto" }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "上传照片",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+                
+                // 上传文件选项
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedOption = "uploadFile" }
+                        .padding(vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selectedOption == "uploadFile",
+                        onClick = { selectedOption = "uploadFile" }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "上传文件",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    when (selectedOption) {
+                        "createFolder" -> onCreateFolder()
+                        "uploadPhoto" -> onUploadPhoto()
+                        "uploadFile" -> onUploadFile()
+                        else -> onDismiss()
+                    }
+                },
+                enabled = selectedOption != null
+            ) {
+                Text("确定")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+fun CreateFolderDialog(
+    onDismiss: () -> Unit,
+    onCreateFolder: (String) -> Unit
+) {
+    var folderName by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("新建文件夹") },
+        text = {
+            Column {
+                Text(
+                    text = "请输入文件夹名称",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                OutlinedTextField(
+                    value = folderName,
+                    onValueChange = { 
+                        folderName = it
+                        isError = it.isBlank() 
+                    },
+                    label = { Text("文件夹名称") },
+                    singleLine = true,
+                    isError = isError,
+                    supportingText = {
+                        if (isError) {
+                            Text(
+                                text = "文件夹名称不能为空",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (folderName.isBlank()) {
+                        isError = true
+                    } else {
+                        onCreateFolder(folderName)
+                    }
+                }
+            ) {
+                Text("创建")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+fun UploadProgressDialog(
+    uploadingState: UploadingState,
+    onDismiss: () -> Unit
+) {
+    if (uploadingState is UploadingState.Uploading) {
+        AlertDialog(
+            onDismissRequest = { /* 不允许用户取消上传进度对话框 */ },
+            title = { 
+                if (uploadingState.total > 1) {
+                    Text("正在上传 (${uploadingState.current}/${uploadingState.total})")
+                } else {
+                    Text("正在上传")
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("正在上传: ${uploadingState.fileName}")
+                    
+                    if (uploadingState.total > 1) {
+                        Text(
+                            text = "文件 ${uploadingState.current} / ${uploadingState.total}",
+                            modifier = Modifier.padding(top = 4.dp),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    LinearProgressIndicator(
+                        progress = { uploadingState.progress / 100f },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(8.dp)
+                    )
+                    
+                    Text(
+                        text = "${uploadingState.progress}%",
+                        modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {},  // 上传过程中没有确认按钮
+            dismissButton = {}   // 上传过程中没有取消按钮
         )
     }
 }
