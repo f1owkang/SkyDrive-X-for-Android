@@ -11,14 +11,19 @@ import androidx.lifecycle.ViewModel
 import com.lurenjia534.nextonedrivev2.AuthRepository.AuthenticationCallbackProvider
 import com.microsoft.identity.client.AuthenticationCallback
 import com.microsoft.identity.client.IAuthenticationResult
+import com.microsoft.identity.client.IMultipleAccountPublicClientApplication
+import com.microsoft.identity.client.SilentAuthenticationCallback
 import com.microsoft.identity.client.exception.MsalException
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 
 // 账户数据类
 data class AccountInfo(
@@ -247,5 +252,195 @@ class AuthViewModel @Inject constructor(
             message = if (isDarkMode) "已切换到深色模式" else "已切换到浅色模式",
             isError = false
         )
+    }
+
+    /**
+     * 检查令牌是否过期并处理
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun checkAndHandleTokenExpiration(errorMessage: String?, onTokenRefreshed: () -> Unit) {
+        if (errorMessage?.contains("token is expired") == true || 
+            errorMessage?.contains("Lifetime validation failed") == true) {
+            
+            Log.d("AuthViewModel", "检测到令牌过期，尝试刷新")
+            
+            // 获取当前活跃账户ID
+            val currentAccountId = tokenManager.getAccountId() ?: return
+            
+            // 启动协程执行令牌刷新
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val msalApp = authenticationManager.getMsalInstance() as? IMultipleAccountPublicClientApplication
+                    if (msalApp == null) {
+                        Log.e("AuthViewModel", "MSAL实例不可用")
+                        return@launch
+                    }
+                    
+                    // 获取账户
+                    val account = msalApp.getAccount(currentAccountId)
+                    if (account == null) {
+                        Log.e("AuthViewModel", "找不到当前活跃账户")
+                        return@launch
+                    }
+                    
+                    // 尝试静默刷新
+                    val result = suspendCancellableCoroutine<Boolean> { continuation ->
+                        msalApp.acquireTokenSilentAsync(
+                            arrayOf("User.Read", "Files.Read.All", "LicenseAssignment.Read.All"),
+                            account,
+                            msalApp.configuration.defaultAuthority.authorityURL.toString(),
+                            object : SilentAuthenticationCallback {
+                                override fun onSuccess(authenticationResult: IAuthenticationResult) {
+                                    // 保存新令牌
+                                    tokenManager.saveAccessToken(authenticationResult.accessToken)
+                                    accessTokenState.value = authenticationResult.accessToken
+                                    
+                                    // 更新多账户存储
+                                    val currentAccounts = tokenManager.getMultipleAccounts()
+                                    val updatedAccounts = currentAccounts.map {
+                                        if (it.id == currentAccountId) {
+                                            AccountInfo(id = it.id, name = it.name, token = authenticationResult.accessToken)
+                                        } else {
+                                            it
+                                        }
+                                    }
+                                    tokenManager.saveMultipleAccounts(updatedAccounts)
+                                    
+                                    Log.d("AuthViewModel", "令牌已成功刷新")
+                                    continuation.resume(true) { 
+                                        // 在协程取消时执行的代码
+                                        Log.d("AuthViewModel", "令牌刷新被取消")
+                                    }
+                                }
+
+                                override fun onError(exception: MsalException) {
+                                    Log.e("AuthViewModel", "令牌刷新失败: ${exception.message}")
+                                    continuation.resume(false) {
+                                        // 在协程取消时执行的代码
+                                        Log.e("AuthViewModel", "令牌刷新过程被取消: ${exception.message}")
+                                    }
+                                }
+                            }
+                        )
+                    }
+                    
+                    // 在主线程调用回调
+                    if (result) {
+                        withContext(Dispatchers.Main) {
+                            onTokenRefreshed()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("AuthViewModel", "令牌刷新过程中出现异常: ${e.message}")
+                }
+            }
+        }
+    }
+
+    /**
+     * 手动刷新指定账户的令牌
+     * @param accountId 要刷新的账户ID
+     * @param callback 刷新结果回调，参数为是否成功
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun refreshTokenManually(accountId: String, callback: (Boolean) -> Unit) {
+        Log.d("AuthViewModel", "开始手动刷新令牌，账户ID: $accountId")
+        
+        // 启动协程执行令牌刷新
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val msalApp = authenticationManager.getMsalInstance() as? IMultipleAccountPublicClientApplication
+                if (msalApp == null) {
+                    Log.e("AuthViewModel", "MSAL实例不可用")
+                    withContext(Dispatchers.Main) { callback(false) }
+                    return@launch
+                }
+                
+                // 获取账户
+                val account = msalApp.getAccount(accountId)
+                if (account == null) {
+                    Log.e("AuthViewModel", "找不到指定账户")
+                    withContext(Dispatchers.Main) { callback(false) }
+                    return@launch
+                }
+                
+                // 尝试静默刷新
+                val result = suspendCancellableCoroutine<Boolean> { continuation ->
+                    msalApp.acquireTokenSilentAsync(
+                        arrayOf("User.Read", "Files.Read.All", "LicenseAssignment.Read.All"),
+                        account,
+                        msalApp.configuration.defaultAuthority.authorityURL.toString(),
+                        object : SilentAuthenticationCallback {
+                            override fun onSuccess(authenticationResult: IAuthenticationResult) {
+                                // 保存新令牌
+                                val newToken = authenticationResult.accessToken
+                                Log.d("AuthViewModel", "令牌刷新成功")
+                                
+                                // 更新多账户存储
+                                val currentAccounts = tokenManager.getMultipleAccounts()
+                                val updatedAccounts = currentAccounts.map {
+                                    if (it.id == accountId) {
+                                        AccountInfo(id = it.id, name = it.name, token = newToken)
+                                    } else {
+                                        it
+                                    }
+                                }
+                                tokenManager.saveMultipleAccounts(updatedAccounts)
+                                
+                                // 如果是当前活跃账户，也更新单账户存储
+                                if (accountId == tokenManager.getAccountId()) {
+                                    tokenManager.saveAccessToken(newToken)
+                                    accessTokenState.value = newToken
+                                }
+                                
+                                continuation.resume(true) { 
+                                    Log.d("AuthViewModel", "令牌刷新协程被取消")
+                                }
+                            }
+
+                            override fun onError(exception: MsalException) {
+                                Log.e("AuthViewModel", "令牌刷新失败: ${exception.message}")
+                                continuation.resume(false) {
+                                    Log.e("AuthViewModel", "令牌刷新过程被取消: ${exception.message}")
+                                }
+                            }
+                        }
+                    )
+                }
+                
+                // 在主线程调用回调
+                withContext(Dispatchers.Main) {
+                    callback(result)
+                    
+                    // 在成功刷新后更新UI中显示的账户列表
+                    if (result) {
+                        _accounts.value = tokenManager.getMultipleAccounts()
+                        
+                        // 添加成功消息
+                        _authMessage.value = AuthMessage(
+                            message = "账户令牌已成功刷新",
+                            isError = false
+                        )
+                    } else {
+                        // 添加失败消息
+                        _authMessage.value = AuthMessage(
+                            message = "账户令牌刷新失败",
+                            isError = true
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("AuthViewModel", "令牌刷新过程中出现异常: ${e.message}")
+                withContext(Dispatchers.Main) { 
+                    callback(false)
+                    
+                    // 添加异常消息
+                    _authMessage.value = AuthMessage(
+                        message = "令牌刷新出错: ${e.localizedMessage ?: "未知错误"}",
+                        isError = true
+                    )
+                }
+            }
+        }
     }
 } 
