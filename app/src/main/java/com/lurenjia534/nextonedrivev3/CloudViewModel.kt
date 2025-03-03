@@ -84,7 +84,7 @@ class CloudViewModel @Inject constructor(
     // 上传状态封装类
     sealed class UploadingState {
         object Idle : UploadingState()
-        data class Uploading(val progress: Int, val fileName: String) : UploadingState()
+        data class Uploading(val progress: Int, val fileName: String, val current: Int, val total: Int) : UploadingState()
         data class Success(val item: DriveItem) : UploadingState()
         data class Error(val message: String) : UploadingState()
     }
@@ -270,7 +270,7 @@ class CloudViewModel @Inject constructor(
     fun uploadPhoto(contentResolver: ContentResolver, uri: Uri) {
         viewModelScope.launch {
             try {
-                _uploadingState.value = UploadingState.Uploading(0, "")
+                _uploadingState.value = UploadingState.Uploading(0, "", 0, 0)
                 
                 val token = _accountToken.value ?: ""
                 val currentFolderId = _currentFolderId.value ?: "root"
@@ -395,7 +395,9 @@ class CloudViewModel @Inject constructor(
     private inner class ProgressRequestBody(
         private val content: ByteArray,
         private val contentType: String,
-        private val fileName: String
+        private val fileName: String,
+        private val currentFileIndex: Int = 1,
+        private val totalFiles: Int = 1
     ) : RequestBody() {
         override fun contentType() = contentType.toMediaTypeOrNull()
         
@@ -421,8 +423,17 @@ class CloudViewModel @Inject constructor(
                 
                 // 更新UI和通知
                 viewModelScope.launch(Dispatchers.Main) {
-                    _uploadingState.value = UploadingState.Uploading(progress, fileName)
-                    uploadNotificationService.showUploadProgressNotification(fileName, progress)
+                    _uploadingState.value = UploadingState.Uploading(
+                        progress, fileName, currentFileIndex, totalFiles
+                    )
+                    
+                    val notificationText = if (totalFiles > 1) {
+                        "$fileName (${currentFileIndex}/${totalFiles})"
+                    } else {
+                        fileName
+                    }
+                    
+                    uploadNotificationService.showUploadProgressNotification(notificationText, progress)
                 }
                 
                 buffer.clear()
@@ -442,7 +453,7 @@ class CloudViewModel @Inject constructor(
                 val mimeType = getMimeType(contentResolver, uri) ?: "application/octet-stream"
                 
                 // 设置初始状态
-                _uploadingState.value = UploadingState.Uploading(0, fileName)
+                _uploadingState.value = UploadingState.Uploading(0, fileName, 0, 0)
                 uploadNotificationService.showUploadProgressNotification(fileName, 0)
                 
                 // 读取文件内容以便使用自定义请求体
@@ -484,6 +495,96 @@ class CloudViewModel @Inject constructor(
                 _errorMessage.value = errorMsg
                 _uploadingState.value = UploadingState.Error(errorMsg)
                 uploadNotificationService.completeUploadNotification("文件", false)
+            }
+        }
+    }
+
+    // 添加多文件上传函数
+    fun uploadMultiplePhotos(contentResolver: ContentResolver, uris: List<Uri>) {
+        viewModelScope.launch {
+            try {
+                val token = _accountToken.value ?: ""
+                val currentFolderId = _currentFolderId.value ?: "root"
+                
+                // 总文件数
+                val totalFiles = uris.size
+                
+                // 记录上传成功的文件数
+                var successCount = 0
+                var failCount = 0
+                
+                // 遍历每个URI进行上传
+                uris.forEachIndexed { index, uri ->
+                    try {
+                        // 获取文件名和MIME类型
+                        val fileName = getFileNameFromUri(contentResolver, uri) ?: "photo_${System.currentTimeMillis()}_$index.jpg"
+                        val mimeType = getMimeType(contentResolver, uri) ?: "image/jpeg"
+                        
+                        // 设置初始上传状态
+                        _uploadingState.value = UploadingState.Uploading(0, fileName, index + 1, totalFiles)
+                        uploadNotificationService.showUploadProgressNotification(
+                            "$fileName (${index + 1}/$totalFiles)", 0
+                        )
+                        
+                        // 读取文件内容
+                        contentResolver.openInputStream(uri)?.use { inputStream ->
+                            val bytes = inputStream.readBytes()
+                            
+                            // 使用自定义请求体上传
+                            val result = oneDriveRepository.uploadFileWithProgress(
+                                token = token,
+                                parentId = currentFolderId,
+                                fileName = fileName,
+                                fileContent = ProgressRequestBody(bytes, mimeType, fileName, index + 1, totalFiles),
+                                mimeType = mimeType
+                            )
+                            
+                            result.onSuccess {
+                                successCount++
+                                Log.d("CloudViewModel", "上传成功 ($successCount/$totalFiles): ${it.name}")
+                                
+                                // 最后一个文件上传成功后更新UI
+                                if (index == uris.size - 1) {
+                                    _uploadingState.value = UploadingState.Success(it)
+                                    uploadNotificationService.completeUploadNotification(
+                                        "完成上传 $successCount 个文件，失败 $failCount 个", true
+                                    )
+                                    refreshCurrentFolder()
+                                }
+                            }.onFailure { error ->
+                                failCount++
+                                val errorMsg = "上传失败 (${index + 1}/$totalFiles): ${error.message}"
+                                Log.e("CloudViewModel", errorMsg)
+                                _errorMessage.value = errorMsg
+                                
+                                // 如果是最后一个文件，无论成功失败都更新UI
+                                if (index == uris.size - 1) {
+                                    _uploadingState.value = UploadingState.Error(
+                                        "上传完成：$successCount 成功，$failCount 失败"
+                                    )
+                                    uploadNotificationService.completeUploadNotification(
+                                        "完成上传 $successCount 个文件，失败 $failCount 个", 
+                                        successCount > 0
+                                    )
+                                    refreshCurrentFolder()
+                                }
+                            }
+                        } ?: run {
+                            failCount++
+                            Log.e("CloudViewModel", "无法读取图片文件 (${index + 1}/$totalFiles)")
+                        }
+                    } catch (e: Exception) {
+                        failCount++
+                        Log.e("CloudViewModel", "处理图片出错 (${index + 1}/$totalFiles): ${e.message}")
+                    }
+                }
+                
+            } catch (e: Exception) {
+                val errorMsg = "批量上传图片时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _uploadingState.value = UploadingState.Error(errorMsg)
+                uploadNotificationService.completeUploadNotification("批量上传失败", false)
             }
         }
     }
