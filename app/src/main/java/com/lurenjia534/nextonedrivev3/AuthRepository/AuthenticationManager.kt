@@ -50,7 +50,11 @@ class AuthenticationManager @Inject constructor(
     家庭版不能获取许可证分配信息，因此这个权限范围只对商业版有效。所以，如果家庭版用户，可以删除这个权限范围并重新构建。
     当前的客户端仅支持自行构建的应用程序，因为msal提到了开发者签名的sha1,我不能暴漏我的sha1，所以我只能提供这个范围。
     */
-    private val SCOPES = arrayOf("User.Read", "Files.Read.All", "LicenseAssignment.Read.All")
+    private val scopes = arrayOf(
+        "Files.ReadWrite.All",
+        "User.Read",
+        "Files.Read.All",
+    )
     private var firstAccount: IAccount? = null
 
     @Synchronized
@@ -110,7 +114,7 @@ class AuthenticationManager @Inject constructor(
     fun acquireTokenInteractive(activity: Activity, callback: AuthenticationCallback) {
         if (::multipleAccountApp.isInitialized) {
             Log.d("MSAL AcquireToken", "尝试进行交互式获取令牌。")
-            multipleAccountApp.acquireToken(activity, SCOPES, callback)
+            multipleAccountApp.acquireToken(activity, scopes, callback)
         } else {
             Log.e("MSAL AcquireToken", "MSAL 应用尚未初始化。")
         }
@@ -120,7 +124,7 @@ class AuthenticationManager @Inject constructor(
         if (::multipleAccountApp.isInitialized && firstAccount != null) {
             Log.d("MSAL SilentAuth", "尝试静默获取令牌。")
             multipleAccountApp.acquireTokenSilentAsync(
-                SCOPES,
+                scopes,
                 firstAccount!!,
                 multipleAccountApp.configuration.defaultAuthority.authorityURL.toString(),
                 callback
