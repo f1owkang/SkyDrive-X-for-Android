@@ -1,6 +1,7 @@
 package com.lurenjia534.nextonedrivev3
 
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -97,7 +98,12 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
-            NextOneDriveV3Theme {
+            // 获取深色模式状态
+            val isDarkMode by authViewModel.isDarkMode.observeAsState(false)
+            
+            NextOneDriveV3Theme(
+                darkTheme = isDarkMode
+            ) {
                 MainScreen(
                     onAddAccount = { accountName ->
                         // 启动认证流程
@@ -321,12 +327,21 @@ fun AccountCard(
     onEdit: (com.lurenjia534.nextonedrivev3.AuthRepository.AccountInfo) -> Unit
 ) {
     var showDetailsDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp, horizontal = 4.dp)
-            .clickable(onClick = onClick)
+            .clickable {
+                // 启动CloudActivity
+                val intent = Intent(context, CloudActivity::class.java).apply {
+                    putExtra(CloudActivity.EXTRA_ACCOUNT_ID, account.id)
+                    putExtra(CloudActivity.EXTRA_ACCOUNT_NAME, account.name)
+                    putExtra(CloudActivity.EXTRA_ACCOUNT_TOKEN, account.token)
+                }
+                context.startActivity(intent)
+            }
             .shadow(
                 elevation = 2.dp,
                 spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -530,8 +545,11 @@ fun AddCloudDisk(
 }
 
 @Composable
-fun SettingsScreen() {
-    var isDarkMode by remember { mutableStateOf(false) }
+fun SettingsScreen(
+    authViewModel: AuthViewModel = hiltViewModel()
+) {
+    // 从ViewModel获取深色模式状态
+    val isDarkMode by authViewModel.isDarkMode.observeAsState(false)
 
     Column(
         modifier = Modifier
@@ -572,7 +590,10 @@ fun SettingsScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { isDarkMode = !isDarkMode }
+                    .clickable { 
+                        // 通过ViewModel更新深色模式状态
+                        authViewModel.updateDarkMode(!isDarkMode) 
+                    }
                     .padding(horizontal = 12.dp, vertical = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -600,7 +621,10 @@ fun SettingsScreen() {
                 }
                 Switch(
                     checked = isDarkMode,
-                    onCheckedChange = { isDarkMode = it }
+                    onCheckedChange = { 
+                        // 通过ViewModel更新深色模式状态
+                        authViewModel.updateDarkMode(it) 
+                    }
                 )
             }
         }
