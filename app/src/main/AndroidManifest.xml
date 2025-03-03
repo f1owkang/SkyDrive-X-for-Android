@@ -42,6 +42,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".CloudActivity"
+            android:exported="false"
+            android:theme="@style/Theme.NextOneDriveV3" />
+
     </application>
 
 </manifest>
