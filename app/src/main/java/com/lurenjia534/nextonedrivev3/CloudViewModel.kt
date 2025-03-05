@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import android.util.Log
+import com.lurenjia534.nextonedrivev3.data.model.Permission
 import com.lurenjia534.nextonedrivev3.notification.UploadNotificationService
 import kotlinx.coroutines.Dispatchers
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -102,6 +103,54 @@ class CloudViewModel @Inject constructor(
         data class Success(val itemName: String) : DeletingState()
         data class Error(val message: String) : DeletingState()
     }
+
+    // 添加共享状态流
+    private val _sharingState = MutableStateFlow<SharingState>(SharingState.Idle)
+    val sharingState: StateFlow<SharingState> = _sharingState.asStateFlow()
+    
+    // 共享状态封装类
+    sealed class SharingState {
+        object Idle : SharingState()
+        data class Sharing(val itemName: String) : SharingState()
+        data class Success(val permission: Permission) : SharingState()
+        data class Error(val message: String) : SharingState()
+    }
+
+    // 添加共享选项封装类
+    data class ShareOption(
+        val type: String,     // "view" 或 "edit"
+        val scope: String,    // "anonymous" 或 "organization"
+        val label: String,    // 显示名称，如"任何人可查看"
+        val description: String // 描述，如"任何获得链接的人都可以查看，无需登录"
+    )
+
+    // 可用的共享选项
+    val shareOptions = listOf(
+        ShareOption(
+            type = "view",
+            scope = "anonymous",
+            label = "任何人可查看",
+            description = "任何获得链接的人都可以查看，无需登录"
+        ),
+        ShareOption(
+            type = "edit",
+            scope = "anonymous",
+            label = "任何人可编辑",
+            description = "任何获得链接的人都可以查看和编辑，无需登录"
+        ),
+        ShareOption(
+            type = "view",
+            scope = "organization",
+            label = "组织内可查看",
+            description = "仅组织内的人可以使用此链接查看"
+        ),
+        ShareOption(
+            type = "edit",
+            scope = "organization",
+            label = "组织内可编辑",
+            description = "仅组织内的人可以使用此链接查看和编辑"
+        )
+    )
 
     init {
         // 加载深色模式偏好设置
@@ -668,6 +717,54 @@ class CloudViewModel @Inject constructor(
                 Log.e("CloudViewModel", errorMsg, e)
                 _errorMessage.value = errorMsg
                 _deletingState.value = DeletingState.Error(errorMsg)
+            }
+        }
+    }
+
+    /**
+     * 创建文件或文件夹的共享链接
+     * @param item 要共享的DriveItem
+     * @param type 链接类型，默认为"view"(只读)
+     * @param scope 链接范围，默认为"anonymous"(匿名访问)
+     */
+    fun shareItem(
+        item: DriveItem,
+        type: String = "view",
+        scope: String = "anonymous"
+    ) {
+        viewModelScope.launch {
+            try {
+                _sharingState.value = SharingState.Sharing(item.name)
+                
+                val token = _accountToken.value ?: ""
+                
+                val result = oneDriveRepository.createShareLink(
+                    token = token,
+                    itemId = item.id,
+                    linkType = type,
+                    scope = scope
+                )
+                
+                result.onSuccess { permission ->
+                    Log.d("CloudViewModel", "共享链接创建成功: ${item.name}, URL: ${permission.link.webUrl}")
+                    _sharingState.value = SharingState.Success(permission)
+                }.onFailure { error ->
+                    val errorMsg = "创建共享链接失败: ${error.message}"
+                    Log.e("CloudViewModel", errorMsg)
+                    _errorMessage.value = errorMsg
+                    _sharingState.value = SharingState.Error(errorMsg)
+                    
+                    // 检查是否是token过期问题并处理
+                    if (error.message?.contains("token is expired") == true || 
+                        error.message?.contains("InvalidAuthenticationToken") == true) {
+                        refreshTokenAndRetry { shareItem(item, type, scope) }
+                    }
+                }
+            } catch (e: Exception) {
+                val errorMsg = "创建共享链接时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _sharingState.value = SharingState.Error(errorMsg)
             }
         }
     }
