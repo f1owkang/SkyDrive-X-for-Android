@@ -5,6 +5,8 @@ import android.net.Uri
 import com.lurenjia534.nextonedrivev3.data.api.OneDriveService
 import com.lurenjia534.nextonedrivev3.data.model.DriveInfo
 import com.lurenjia534.nextonedrivev3.data.model.DriveItem
+import com.lurenjia534.nextonedrivev3.data.model.CreateLinkRequest
+import com.lurenjia534.nextonedrivev3.data.model.Permission
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -271,6 +273,55 @@ class OneDriveRepository @Inject constructor(
                     else -> response.code().toString()
                 }
                 Result.failure(Exception("删除失败($errorCode): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 创建共享链接
+     * @param token 访问令牌
+     * @param itemId 要共享的文件或文件夹ID
+     * @param linkType 链接类型，可以是"view"(只读),"edit"(可编辑)或"embed"(嵌入)
+     * @param scope 链接范围，可以是"anonymous"(匿名)或"organization"(组织内)
+     */
+    suspend fun createShareLink(
+        token: String,
+        itemId: String,
+        linkType: String = "view",
+        scope: String = "anonymous"
+    ): Result<Permission> = withContext(Dispatchers.IO) {
+        try {
+            val authToken = "Bearer $token"
+            
+            val linkRequest = CreateLinkRequest(
+                type = linkType,
+                scope = scope
+            )
+            
+            val response = oneDriveService.createShareLink(
+                authToken = authToken,
+                itemId = itemId,
+                linkRequest = linkRequest
+            )
+            
+            if (response.isSuccessful) {
+                val permission = response.body()
+                if (permission != null) {
+                    Result.success(permission)
+                } else {
+                    Result.failure(Exception("创建共享链接成功但返回数据为空"))
+                }
+            } else {
+                // 增强错误信息
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorCode = when (response.code()) {
+                    403 -> "权限不足"
+                    404 -> "找不到指定的文件或文件夹"
+                    else -> response.code().toString()
+                }
+                Result.failure(Exception("创建共享链接失败($errorCode): ${response.message()}\n详情:$errorBody"))
             }
         } catch (e: Exception) {
             Result.failure(e)
