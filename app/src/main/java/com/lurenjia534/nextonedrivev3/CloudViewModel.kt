@@ -91,6 +91,18 @@ class CloudViewModel @Inject constructor(
         data class Error(val message: String) : UploadingState()
     }
 
+    // 添加删除状态流
+    private val _deletingState = MutableStateFlow<DeletingState>(DeletingState.Idle)
+    val deletingState: StateFlow<DeletingState> = _deletingState.asStateFlow()
+    
+    // 删除状态封装类
+    sealed class DeletingState {
+        object Idle : DeletingState()
+        data class Deleting(val itemName: String) : DeletingState()
+        data class Success(val itemName: String) : DeletingState()
+        data class Error(val message: String) : DeletingState()
+    }
+
     init {
         // 加载深色模式偏好设置
         loadDarkModePreference()
@@ -615,6 +627,47 @@ class CloudViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e("CloudViewModel", "刷新令牌过程中发生错误: ${e.message}")
                 _errorMessage.value = "令牌刷新出错: ${e.message}"
+            }
+        }
+    }
+
+    /**
+     * 删除文件或文件夹
+     */
+    fun deleteItem(item: DriveItem) {
+        viewModelScope.launch {
+            try {
+                _deletingState.value = DeletingState.Deleting(item.name)
+                
+                val token = _accountToken.value ?: ""
+                
+                val result = oneDriveRepository.deleteItem(
+                    token = token,
+                    itemId = item.id
+                )
+                
+                result.onSuccess {
+                    Log.d("CloudViewModel", "删除成功: ${item.name}")
+                    _deletingState.value = DeletingState.Success(item.name)
+                    // 刷新文件列表
+                    refreshCurrentFolder()
+                }.onFailure { error ->
+                    val errorMsg = "删除失败: ${error.message}"
+                    Log.e("CloudViewModel", errorMsg)
+                    _errorMessage.value = errorMsg
+                    _deletingState.value = DeletingState.Error(errorMsg)
+                    
+                    // 检查是否是token过期问题并处理
+                    if (error.message?.contains("token is expired") == true || 
+                        error.message?.contains("InvalidAuthenticationToken") == true) {
+                        refreshTokenAndRetry { deleteItem(item) }
+                    }
+                }
+            } catch (e: Exception) {
+                val errorMsg = "删除时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _deletingState.value = DeletingState.Error(errorMsg)
             }
         }
     }
