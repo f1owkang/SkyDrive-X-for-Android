@@ -8,6 +8,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lurenjia534.nextonedrivev3.AuthRepository.AuthViewModel
+import com.lurenjia534.nextonedrivev3.AuthRepository.TokenManager
 import com.lurenjia534.nextonedrivev3.data.model.DriveInfo
 import com.lurenjia534.nextonedrivev3.data.model.DriveItem
 import com.lurenjia534.nextonedrivev3.data.repository.OneDriveRepository
@@ -32,7 +33,8 @@ class CloudViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val oneDriveRepository: OneDriveRepository,
     private val authViewModel: AuthViewModel,
-    private val uploadNotificationService: UploadNotificationService  // 新增
+    private val uploadNotificationService: UploadNotificationService,
+    private val tokenManager: TokenManager
 ) : ViewModel() {
 
     // 账户信息
@@ -127,11 +129,11 @@ class CloudViewModel @Inject constructor(
                     val errorMsg = "加载云盘信息失败: ${error.message}"
                     _errorMessage.value = errorMsg
                     
-                    // 检查是否是 token 过期问题并处理
-                    authViewModel.checkAndHandleTokenExpiration(error.message) {
-                        // token 刷新成功后重新加载
-                        _accountToken.value = authViewModel.accessTokenState.value
-                        loadDriveInfo()
+                    // 改进令牌过期检测
+                    if (error.message?.contains("token is expired") == true || 
+                        error.message?.contains("InvalidAuthenticationToken") == true) {
+                        Log.d("CloudViewModel", "检测到令牌过期，正在尝试刷新...")
+                        refreshTokenAndRetry { loadDriveInfo() }
                     }
                 }
                 
@@ -140,11 +142,11 @@ class CloudViewModel @Inject constructor(
                 val errorMsg = "加载云盘信息失败: ${e.message}"
                 _errorMessage.value = errorMsg
                 
-                // 检查是否是 token 过期问题并处理
-                authViewModel.checkAndHandleTokenExpiration(e.message) {
-                    // token 刷新成功后重新加载
-                    _accountToken.value = authViewModel.accessTokenState.value
-                    loadDriveInfo()
+                // 同样检查异常中是否包含令牌过期信息
+                if (e.message?.contains("token is expired") == true || 
+                    e.message?.contains("InvalidAuthenticationToken") == true) {
+                    Log.d("CloudViewModel", "捕获到令牌过期异常，正在尝试刷新...")
+                    refreshTokenAndRetry { loadDriveInfo() }
                 }
                 
                 _isDriveInfoLoading.value = false
@@ -178,11 +180,11 @@ class CloudViewModel @Inject constructor(
                     val errorMsg = "加载云盘内容失败: ${error.message}"
                     _errorMessage.value = errorMsg
                     
-                    // 检查是否是 token 过期问题并处理
-                    authViewModel.checkAndHandleTokenExpiration(error.message) {
-                        // token 刷新成功后重新加载
-                        _accountToken.value = authViewModel.accessTokenState.value
-                        loadCloudFiles()
+                    // 改进令牌过期检测
+                    if (error.message?.contains("token is expired") == true || 
+                        error.message?.contains("InvalidAuthenticationToken") == true) {
+                        Log.d("CloudViewModel", "检测到令牌过期，正在尝试刷新...")
+                        refreshTokenAndRetry { loadCloudFiles() }
                     }
                 }
                 
@@ -190,15 +192,14 @@ class CloudViewModel @Inject constructor(
             } catch (e: Exception) {
                 val errorMsg = "加载云盘内容失败: ${e.message}"
                 _errorMessage.value = errorMsg
-                
-                // 检查是否是 token 过期问题并处理
-                authViewModel.checkAndHandleTokenExpiration(e.message) {
-                    // token 刷新成功后重新加载
-                    _accountToken.value = authViewModel.accessTokenState.value
-                    loadCloudFiles()
-                }
-                
                 _isLoading.value = false
+                
+                // 同样检查异常中是否包含令牌过期信息
+                if (e.message?.contains("token is expired") == true || 
+                    e.message?.contains("InvalidAuthenticationToken") == true) {
+                    Log.d("CloudViewModel", "捕获到令牌过期异常，正在尝试刷新...")
+                    refreshTokenAndRetry { loadCloudFiles() }
+                }
             }
         }
     }
@@ -585,6 +586,35 @@ class CloudViewModel @Inject constructor(
                 _errorMessage.value = errorMsg
                 _uploadingState.value = UploadingState.Error(errorMsg)
                 uploadNotificationService.completeUploadNotification("批量上传失败", false)
+            }
+        }
+    }
+
+    // 添加一个更可靠的令牌刷新和重试函数
+    private fun refreshTokenAndRetry(retryAction: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                Log.d("CloudViewModel", "正在刷新令牌...")
+                
+                // 获取当前账户ID
+                val accountId = tokenManager.getAccountId() ?: return@launch
+                
+                // 直接使用AuthViewModel的手动刷新方法
+                authViewModel.refreshTokenManually(accountId) { success ->
+                    if (success) {
+                        Log.d("CloudViewModel", "令牌刷新成功，正在重试操作...")
+                        // 更新本地令牌
+                        _accountToken.value = authViewModel.accessTokenState.value
+                        // 执行重试操作
+                        retryAction()
+                    } else {
+                        Log.e("CloudViewModel", "令牌刷新失败")
+                        _errorMessage.value = "令牌刷新失败，请尝试重新登录"
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("CloudViewModel", "刷新令牌过程中发生错误: ${e.message}")
+                _errorMessage.value = "令牌刷新出错: ${e.message}"
             }
         }
     }
