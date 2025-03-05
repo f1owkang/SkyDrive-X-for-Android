@@ -3,6 +3,8 @@ package com.lurenjia534.nextonedrivev3.data.api
 import com.lurenjia534.nextonedrivev3.data.model.DriveInfo
 import com.lurenjia534.nextonedrivev3.data.model.DriveItem
 import com.lurenjia534.nextonedrivev3.data.model.DriveResponse
+import com.lurenjia534.nextonedrivev3.data.model.Permission
+import com.lurenjia534.nextonedrivev3.data.model.CreateLinkRequest
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -70,4 +72,12 @@ interface OneDriveService {
         @Header("Authorization") authToken: String,
         @Path("itemId") itemId: String
     ): Response<Void>
+    
+    // 创建共享链接
+    @POST("me/drive/items/{itemId}/createLink")
+    suspend fun createShareLink(
+        @Header("Authorization") authToken: String,
+        @Path("itemId") itemId: String,
+        @Body linkRequest: CreateLinkRequest
+    ): Response<Permission>
 } 
