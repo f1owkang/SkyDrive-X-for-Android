@@ -242,4 +242,38 @@ class OneDriveRepository @Inject constructor(
             Result.failure(e)
         }
     }
+    
+    /**
+     * 删除文件或文件夹（移至回收站）
+     */
+    suspend fun deleteItem(
+        token: String,
+        itemId: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val authToken = "Bearer $token"
+            
+            val response = oneDriveService.deleteItem(
+                authToken = authToken,
+                itemId = itemId
+            )
+            
+            if (response.isSuccessful) {
+                // 204 No Content 表示删除成功
+                Result.success(true)
+            } else {
+                // 增强错误信息
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorCode = when (response.code()) {
+                    403 -> "权限不足"
+                    404 -> "找不到指定的文件或文件夹"
+                    412 -> "文件已被修改，刷新后重试"
+                    else -> response.code().toString()
+                }
+                Result.failure(Exception("删除失败($errorCode): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 } 
