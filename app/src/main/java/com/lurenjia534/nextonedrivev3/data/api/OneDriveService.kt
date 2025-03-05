@@ -12,6 +12,7 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.PUT
+import retrofit2.http.DELETE
 
 interface OneDriveService {
     @GET("me/drive/root/children")
@@ -62,4 +63,11 @@ interface OneDriveService {
         @Path("parentId") parentId: String,
         @Body folderInfo: RequestBody
     ): Response<DriveItem>
+    
+    // 删除文件或文件夹
+    @DELETE("me/drive/items/{itemId}")
+    suspend fun deleteItem(
+        @Header("Authorization") authToken: String,
+        @Path("itemId") itemId: String
+    ): Response<Void>
 } 
