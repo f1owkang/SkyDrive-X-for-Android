@@ -13,7 +13,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.lurenjia534.nextonedrivev3.ui.theme.NextOneDriveV3Theme
-import dagger.hilt.android.AndroidEntryPoint
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -99,8 +98,22 @@ import androidx.compose.runtime.rememberCoroutineScope
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.core.app.ActivityCompat
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.core.content.ContextCompat
+import com.lurenjia534.nextonedrivev3.CloudViewModel.DeletingState
+import dagger.hilt.android.AndroidEntryPoint
+import java.util.Locale
+import android.content.Intent
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.content.Context
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.ContentCopy
+import com.lurenjia534.nextonedrivev3.CloudViewModel.ShareOption
+import com.lurenjia534.nextonedrivev3.CloudViewModel.SharingState
 
 @AndroidEntryPoint
 class CloudActivity : ComponentActivity() {
@@ -238,6 +251,16 @@ fun FilesScreen(viewModel: CloudViewModel) {
     var showOptionsDialog by remember { mutableStateOf(false) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     
+    // 添加删除确认对话框状态
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var itemToDelete by remember { mutableStateOf<DriveItem?>(null) }
+    
+    // 添加共享选项对话框状态
+    var showShareOptionsDialog by remember { mutableStateOf(false) }
+    var itemToShare by remember { mutableStateOf<DriveItem?>(null) }
+    var showShareResultDialog by remember { mutableStateOf(false) }
+    var shareUrl by remember { mutableStateOf("") }
+    
     // 注册启动多图片选择器的结果处理
     val multiplePhotoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetMultipleContents()
@@ -358,6 +381,12 @@ fun FilesScreen(viewModel: CloudViewModel) {
     // 监视上传状态
     val uploadingState by viewModel.uploadingState.collectAsState()
     
+    // 监视删除状态
+    val deletingState by viewModel.deletingState.collectAsState()
+    
+    // 监视共享状态
+    val sharingState by viewModel.sharingState.collectAsState()
+    
     // 显示上传进度对话框
     when (val state = uploadingState) {
         is UploadingState.Uploading -> {
@@ -476,6 +505,25 @@ fun FilesScreen(viewModel: CloudViewModel) {
                                     } else {
                                         // TODO: 处理文件点击
                                     }
+                                },
+                                onShareClick = {
+                                    // 显示分享选项对话框
+                                    itemToShare = item
+                                    showShareOptionsDialog = true
+                                },
+                                onDeleteClick = {
+                                    // 显示删除确认对话框
+                                    itemToDelete = item
+                                    showDeleteConfirmDialog = true
+                                },
+                                onDownloadClick = {
+                                    // 处理下载操作
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            message = "功能开发中：下载 ${item.name}",
+                                            duration = SnackbarDuration.Short
+                                        )
+                                    }
                                 }
                             )
                         }
@@ -555,6 +603,146 @@ fun FilesScreen(viewModel: CloudViewModel) {
             }
         }
         
+        // 删除确认对话框
+        if (showDeleteConfirmDialog && itemToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { 
+                    showDeleteConfirmDialog = false
+                    itemToDelete = null
+                },
+                title = { Text("确认删除") },
+                text = { Text("确定要删除「${itemToDelete?.name}」吗？此操作会将项目移至回收站。") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            itemToDelete?.let { viewModel.deleteItem(it) }
+                            showDeleteConfirmDialog = false
+                            itemToDelete = null
+                        },
+//                        colors = ButtonDefaults.textButtonColors(
+//                            MaterialTheme.colorScheme.error
+//                        )
+                    ) {
+                        Text("删除")
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { 
+                            showDeleteConfirmDialog = false
+                            itemToDelete = null
+                        }
+                    ) {
+                        Text("取消")
+                    }
+                }
+            )
+        }
+        
+        // 删除状态观察
+        LaunchedEffect(deletingState) {
+            when (val state = deletingState) {
+                is DeletingState.Success -> {
+                    // 显示删除成功的提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "「${state.itemName}」已移至回收站",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+                is DeletingState.Error -> {
+                    // 显示错误提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = state.message,
+                            duration = SnackbarDuration.Long,
+                            actionLabel = "确定"
+                        )
+                    }
+                }
+                else -> { /* 其他状态不做处理 */ }
+            }
+        }
+        
+        // 监视共享状态并处理
+        LaunchedEffect(sharingState) {
+            when (val state = sharingState) {
+                is SharingState.Success -> {
+                    // 显示分享结果对话框
+                    shareUrl = state.permission.link.webUrl
+                    showShareResultDialog = true
+                }
+                is SharingState.Error -> {
+                    // 显示错误提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = state.message,
+                            duration = SnackbarDuration.Long,
+                            actionLabel = "确定"
+                        )
+                    }
+                }
+                else -> { /* 其他状态不做处理 */ }
+            }
+        }
+        
+        // 分享选项对话框
+        if (showShareOptionsDialog && itemToShare != null) {
+            ShareOptionsDialog(
+                onDismiss = { 
+                    showShareOptionsDialog = false 
+                    itemToShare = null 
+                },
+                onConfirm = { shareOption ->
+                    // 执行分享操作
+                    itemToShare?.let { item ->
+                        viewModel.shareItem(
+                            item = item,
+                            type = shareOption.type,
+                            scope = shareOption.scope
+                        )
+                    }
+                    showShareOptionsDialog = false
+                },
+                shareOptions = viewModel.shareOptions
+            )
+        }
+        
+        // 分享结果对话框
+        if (showShareResultDialog && shareUrl.isNotEmpty()) {
+            ShareLinkDialog(
+                url = shareUrl,
+                onDismiss = { 
+                    showShareResultDialog = false 
+                    shareUrl = ""
+                },
+                onCopy = {
+                    // 复制链接到剪贴板
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("共享链接", shareUrl)
+                    clipboard.setPrimaryClip(clip)
+                    
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "链接已复制到剪贴板",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                },
+                onShare = {
+                    // 使用系统分享
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, shareUrl)
+                        type = "text/plain"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, "分享链接")
+                    context.startActivity(shareIntent)
+                }
+            )
+        }
+        
         // 添加SnackbarHost
         SnackbarHost(
             hostState = snackbarHostState,
@@ -568,8 +756,13 @@ fun FilesScreen(viewModel: CloudViewModel) {
 @Composable
 fun FileListItem(
     driveItem: DriveItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onShareClick: () -> Unit = {},
+    onDeleteClick: () -> Unit = {},
+    onDownloadClick: () -> Unit = {}
 ) {
+    var showMenu by remember { mutableStateOf(false) }
+
     ListItem(
         headlineContent = { 
             Text(
@@ -605,17 +798,69 @@ fun FileListItem(
                     MaterialTheme.colorScheme.secondary
             )
         },
+        trailingContent = {
+            Box {
+                IconButton(onClick = { showMenu = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "更多选项"
+                    )
+                }
+                
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("分享") },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            onShareClick()
+                            showMenu = false
+                        }
+                    )
+                    
+                    DropdownMenuItem(
+                        text = { Text("删除") },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            onDeleteClick()
+                            showMenu = false
+                        }
+                    )
+                    
+                    DropdownMenuItem(
+                        text = { Text("下载") },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = Icons.Default.Download,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            onDownloadClick()
+                            showMenu = false
+                        }
+                    )
+                }
+            }
+        },
         colors = ListItemDefaults.colors(
             containerColor = Color.Transparent
         ),
         modifier = Modifier
             .clickable(onClick = onClick)
     )
-//    Divider(
-//        modifier = Modifier.padding(start = 56.dp),
-//        thickness = 0.5.dp,
-//        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-//    )
 }
 
 // 根据文件扩展名获取适当的图标
@@ -652,9 +897,9 @@ fun formatFileSize(size: Long): String {
     
     return when {
         size < kb -> "$size B"
-        size < mb -> String.format("%.2f KB", size / kb)
-        size < gb -> String.format("%.2f MB", size / mb)
-        else -> String.format("%.2f GB", size / gb)
+        size < mb -> String.format(Locale.US, "%.2f KB", size / kb)
+        size < gb -> String.format(Locale.US, "%.2f MB", size / mb)
+        else -> String.format(Locale.US, "%.2f GB", size / gb)
     }
 }
 
@@ -1170,7 +1415,7 @@ fun FileOperationsDialog(
             }
         },
         confirmButton = {
-            Button(
+            TextButton(
                 onClick = {
                     when (selectedOption) {
                         "createFolder" -> onCreateFolder()
@@ -1303,4 +1548,152 @@ fun UploadProgressDialog(
             dismissButton = {}   // 上传过程中没有取消按钮
         )
     }
+}
+
+// 添加分享选项对话框
+@Composable
+fun ShareOptionsDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (ShareOption) -> Unit,
+    shareOptions: List<ShareOption>
+) {
+    var selectedOption by remember { mutableStateOf<ShareOption?>(shareOptions.firstOrNull()) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选择分享方式") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "选择要创建的共享链接类型：",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                shareOptions.forEach { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedOption = option }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedOption == option,
+                            onClick = { selectedOption = option }
+                        )
+                        
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 8.dp)
+                        ) {
+                            Text(
+                                text = option.label,
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            
+                            Text(
+                                text = option.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    selectedOption?.let { onConfirm(it) }
+                },
+                enabled = selectedOption != null
+            ) {
+                Text("创建链接")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+// 添加共享链接对话框
+@Composable
+fun ShareLinkDialog(
+    url: String,
+    onDismiss: () -> Unit,
+    onCopy: () -> Unit,
+    onShare: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("分享链接") },
+        text = { 
+            Column {
+                Text("已创建共享链接，可供他人访问。")
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "分享连接是永久且公开的，任何人都可以访问，请谨慎使用。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .padding(8.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                // 显示链接（自动省略过长的链接）
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(4.dp)
+                        )
+                        .padding(8.dp)
+                )
+            }
+        },
+        confirmButton = {
+            Row {
+                // 复制按钮
+                TextButton(
+                    onClick = onCopy
+                ) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("复制")
+                }
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                // 分享按钮
+                TextButton(
+                    onClick = onShare
+                ) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("分享")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
 }
