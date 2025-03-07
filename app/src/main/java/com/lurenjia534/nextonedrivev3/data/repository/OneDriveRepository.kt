@@ -25,6 +25,8 @@ import javax.inject.Singleton
 import android.util.Log
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
+import com.lurenjia534.nextonedrivev3.data.model.MoveItemRequest
+import com.lurenjia534.nextonedrivev3.data.model.ParentReference
 
 @Singleton
 class OneDriveRepository @Inject constructor(
@@ -655,6 +657,59 @@ class OneDriveRepository @Inject constructor(
                     val errorBody = result.errorBody()?.string() ?: ""
                     Result.failure(Exception("上传失败(${result.code()}): ${result.message()}\n详情:$errorBody"))
                 }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 移动文件或文件夹到新位置
+     * @param token 访问令牌
+     * @param itemId 要移动的项目ID
+     * @param destinationFolderId 目标文件夹ID
+     * @param newName 可选的新名称，如果需要同时重命名
+     */
+    suspend fun moveItem(
+        token: String,
+        itemId: String,
+        destinationFolderId: String,
+        newName: String? = null
+    ): Result<DriveItem> = withContext(Dispatchers.IO) {
+        try {
+            val authToken = "Bearer $token"
+            
+            // 创建移动请求
+            val moveRequest = MoveItemRequest(
+                parentReference = MoveItemRequest.MoveParentReference(id = destinationFolderId),
+                name = newName
+            )
+            
+            val response = oneDriveService.moveItem(
+                authToken = authToken,
+                itemId = itemId,
+                moveRequest = moveRequest
+            )
+            
+            if (response.isSuccessful) {
+                val item = response.body()
+                if (item != null) {
+                    Result.success(item)
+                } else {
+                    Result.failure(Exception("移动项目成功但返回数据为空"))
+                }
+            } else {
+                // 增强错误信息
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorCode = when (response.code()) {
+                    400 -> "请求无效"
+                    403 -> "权限不足"
+                    404 -> "找不到指定的文件或文件夹"
+                    409 -> "目标位置已存在同名项目"
+                    412 -> "文件已被修改，请刷新后重试"
+                    else -> response.code().toString()
+                }
+                Result.failure(Exception("移动失败($errorCode): ${response.message()}\n详情:$errorBody"))
             }
         } catch (e: Exception) {
             Result.failure(e)
