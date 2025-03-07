@@ -42,7 +42,7 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:host="com.lurenjia534.nextonedrivev2"
-                    android:path="/IwDyH0cyLuIiPtw+4lAoboMk9PY="
+                    android:path="/<YOUR_BASE64_ENCODED_PACKAGE_SIGNATURE>"
                     android:scheme="msauth" />
             </intent-filter>
         </activity>
