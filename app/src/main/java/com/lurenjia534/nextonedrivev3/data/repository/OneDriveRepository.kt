@@ -7,8 +7,13 @@ import com.lurenjia534.nextonedrivev3.data.model.DriveInfo
 import com.lurenjia534.nextonedrivev3.data.model.DriveItem
 import com.lurenjia534.nextonedrivev3.data.model.CreateLinkRequest
 import com.lurenjia534.nextonedrivev3.data.model.Permission
+import com.lurenjia534.nextonedrivev3.data.model.UploadSessionRequest
+import com.lurenjia534.nextonedrivev3.data.model.UploadItemProperties
+import com.lurenjia534.nextonedrivev3.data.model.UploadSessionResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -17,6 +22,9 @@ import java.io.File
 import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Singleton
+import android.util.Log
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 
 @Singleton
 class OneDriveRepository @Inject constructor(
@@ -322,6 +330,331 @@ class OneDriveRepository @Inject constructor(
                     else -> response.code().toString()
                 }
                 Result.failure(Exception("创建共享链接失败($errorCode): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 创建上传会话（用于大文件上传）
+     */
+    suspend fun createUploadSession(
+        token: String,
+        parentId: String,
+        fileName: String
+    ): Result<UploadSessionResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authToken = "Bearer $token"
+            
+            // 创建请求体
+            val requestBody = UploadSessionRequest(
+                item = UploadItemProperties(
+                    conflictBehavior = "rename",
+                    name = fileName
+                )
+            )
+            
+            // 根据parentId选择适当的API
+            val response = if (parentId == "root") {
+                oneDriveService.createUploadSessionForRoot(
+                    authToken = authToken,
+                    filename = fileName,
+                    request = requestBody
+                )
+            } else {
+                oneDriveService.createUploadSession(
+                    authToken = authToken,
+                    parentId = parentId,
+                    filename = fileName,
+                    request = requestBody
+                )
+            }
+            
+            if (response.isSuccessful) {
+                val sessionResponse = response.body()
+                if (sessionResponse != null) {
+                    Result.success(sessionResponse)
+                } else {
+                    Result.failure(Exception("创建上传会话成功但返回数据为空"))
+                }
+            } else {
+                // 增强错误信息
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorCode = when (response.code()) {
+                    403 -> "权限不足"
+                    404 -> "找不到指定的文件夹（ID可能无效）"
+                    else -> response.code().toString()
+                }
+                Result.failure(Exception("创建上传会话失败($errorCode): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 上传大文件 - 使用分片上传
+     * @param uploadUrl 上传会话URL
+     * @param inputStream 文件输入流
+     * @param contentType 文件类型
+     * @param totalSize 文件总大小
+     * @param chunkSize 每个片段大小（建议为320KB的倍数，最大不超过60MB）
+     * @param onProgress 进度回调
+     */
+    suspend fun uploadLargeFile(
+        uploadUrl: String,
+        inputStream: InputStream,
+        contentType: String,
+        totalSize: Long,
+        chunkSize: Int = 10 * 1024 * 1024, // 默认10MB
+        onProgress: (current: Long, total: Long) -> Unit
+    ): Flow<Result<DriveItem>> = flow {
+        var uploadedBytes = 0L
+        val buffer = ByteArray(chunkSize)
+        val bufferedInputStream = BufferedInputStream(inputStream)
+        
+        try {
+            var bytesRead: Int
+            
+            while (bufferedInputStream.read(buffer).also { bytesRead = it } != -1) {
+                if (bytesRead <= 0) break
+                
+                // 准备当前片段的字节数组
+                val chunk = if (bytesRead < buffer.size) buffer.copyOf(bytesRead) else buffer
+                
+                // 计算范围
+                val startByte = uploadedBytes
+                val endByte = uploadedBytes + bytesRead - 1
+                
+                // 准备Content-Range头
+                val contentRange = "bytes $startByte-$endByte/$totalSize"
+                
+                // 创建RequestBody
+                val requestBody = chunk.toRequestBody(contentType.toMediaTypeOrNull())
+                
+                // 上传片段
+                val response = oneDriveService.uploadFileFragment(
+                    uploadUrl = uploadUrl,
+                    contentRange = contentRange,
+                    content = requestBody
+                )
+                
+                if (response.isSuccessful) {
+                    // 更新已上传字节数
+                    uploadedBytes += bytesRead
+                    
+                    // 回调进度
+                    onProgress(uploadedBytes, totalSize)
+                    
+                    // 如果是最后一个片段，response.body()将包含完整的DriveItem
+                    if (uploadedBytes >= totalSize || response.code() == 201 || response.code() == 200) {
+                        val driveItem = response.body()
+                        if (driveItem != null) {
+                            emit(Result.success(driveItem))
+                            break
+                        }
+                    }
+                } else {
+                    // 处理错误
+                    val errorBody = response.errorBody()?.string() ?: ""
+                    val error = Exception("上传片段失败(${response.code()}): ${response.message()}\n详情:$errorBody")
+                    emit(Result.failure(error))
+                    break
+                }
+            }
+            
+            // 确保关闭流
+            bufferedInputStream.close()
+            inputStream.close()
+            
+        } catch (e: Exception) {
+            emit(Result.failure(e))
+        }
+    }
+    
+    /**
+     * 获取上传会话状态
+     */
+    suspend fun getUploadSessionStatus(
+        uploadUrl: String
+    ): Result<UploadSessionResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = oneDriveService.getUploadSessionStatus(uploadUrl)
+            
+            if (response.isSuccessful) {
+                val sessionStatus = response.body()
+                if (sessionStatus != null) {
+                    Result.success(sessionStatus)
+                } else {
+                    Result.failure(Exception("获取上传会话状态成功但返回数据为空"))
+                }
+            } else {
+                val errorBody = response.errorBody()?.string() ?: ""
+                Result.failure(Exception("获取上传会话状态失败(${response.code()}): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 取消上传会话
+     */
+    suspend fun cancelUploadSession(
+        uploadUrl: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val response = oneDriveService.cancelUploadSession(uploadUrl)
+            
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val errorBody = response.errorBody()?.string() ?: ""
+                Result.failure(Exception("取消上传会话失败(${response.code()}): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 上传大文件的综合方法 - 处理整个上传流程
+     * @param token 访问令牌
+     * @param parentId 父文件夹ID
+     * @param fileName 文件名
+     * @param inputStream 文件输入流
+     * @param contentType 文件MIME类型
+     * @param fileSize 文件大小
+     * @param onProgress 进度回调函数
+     */
+    suspend fun uploadLargeFileComplete(
+        token: String,
+        parentId: String,
+        fileName: String,
+        inputStream: InputStream,
+        contentType: String,
+        fileSize: Long,
+        onProgress: (progress: Int) -> Unit
+    ): Result<DriveItem> = withContext(Dispatchers.IO) {
+        try {
+            // 创建上传会话
+            val sessionResult = createUploadSession(token, parentId, fileName)
+            
+            if (sessionResult.isSuccess) {
+                val uploadSession = sessionResult.getOrThrow()
+                val uploadUrl = uploadSession.uploadUrl
+                
+                // 开始分片上传
+                var finalResult: Result<DriveItem>? = null
+                
+                uploadLargeFile(
+                    uploadUrl = uploadUrl,
+                    inputStream = inputStream,
+                    contentType = contentType,
+                    totalSize = fileSize,
+                    onProgress = { current, total ->
+                        val progressPercent = ((current.toDouble() / total) * 100).toInt()
+                        onProgress(progressPercent)
+                    }
+                ).collect { result ->
+                    finalResult = result
+                }
+                
+                finalResult ?: Result.failure(Exception("上传过程中发生未知错误"))
+            } else {
+                Result.failure(sessionResult.exceptionOrNull() ?: Exception("创建上传会话失败"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 判断文件大小并使用适当的方法上传
+     * @param token 访问令牌
+     * @param parentId 父文件夹ID
+     * @param fileName 文件名
+     * @param inputStream 文件输入流
+     * @param contentType 文件MIME类型  
+     * @param fileSize 文件大小
+     * @param onProgress 进度回调函数
+     */
+    suspend fun smartUploadFile(
+        token: String,
+        parentId: String,
+        fileName: String,
+        inputStream: InputStream,
+        contentType: String,
+        fileSize: Long,
+        onProgress: (progress: Int) -> Unit
+    ): Result<DriveItem> = withContext(Dispatchers.IO) {
+        try {
+            // 大文件阈值（4MB）
+            val LARGE_FILE_THRESHOLD = 4 * 1024 * 1024 // 4MB
+            
+            if (fileSize > LARGE_FILE_THRESHOLD) {
+                // 大文件上传
+                Log.d("OneDriveRepository", "使用分片上传大文件: $fileName, 大小: $fileSize 字节")
+                uploadLargeFileComplete(token, parentId, fileName, inputStream, contentType, fileSize, onProgress)
+            } else {
+                // 小文件上传 - 读取整个文件到内存
+                Log.d("OneDriveRepository", "使用简单上传小文件: $fileName, 大小: $fileSize 字节")
+                
+                // 创建包含进度报告的RequestBody
+                val bytes = inputStream.readBytes()
+                
+                // 创建自定义RequestBody来报告进度
+                val requestBody = object : RequestBody() {
+                    override fun contentType() = contentType.toMediaTypeOrNull()
+                    override fun contentLength() = bytes.size.toLong()
+                    
+                    override fun writeTo(sink: okio.BufferedSink) {
+                        var bytesWritten = 0L
+                        val buffer = ByteArray(8192) // 8KB缓冲区
+                        val inputStream = bytes.inputStream()
+                        var read: Int
+                        
+                        while (inputStream.read(buffer).also { read = it } != -1) {
+                            sink.write(buffer, 0, read)
+                            bytesWritten += read
+                            
+                            // 报告进度
+                            val progress = ((bytesWritten.toDouble() / bytes.size) * 100).toInt()
+                            onProgress(progress)
+                        }
+                    }
+                }
+                
+                // 使用现有的上传方法
+                val result = if (parentId == "root") {
+                    oneDriveService.uploadFileToRoot(
+                        authToken = "Bearer $token",
+                        filename = fileName,
+                        fileContent = requestBody,
+                        conflictBehavior = "rename"
+                    )
+                } else {
+                    oneDriveService.uploadNewFile(
+                        authToken = "Bearer $token",
+                        parentId = parentId,
+                        filename = fileName,
+                        fileContent = requestBody,
+                        conflictBehavior = "rename"
+                    )
+                }
+                
+                if (result.isSuccessful) {
+                    val item = result.body()
+                    if (item != null) {
+                        Result.success(item)
+                    } else {
+                        Result.failure(Exception("上传成功但返回数据为空"))
+                    }
+                } else {
+                    val errorBody = result.errorBody()?.string() ?: ""
+                    Result.failure(Exception("上传失败(${result.code()}): ${result.message()}\n详情:$errorBody"))
+                }
             }
         } catch (e: Exception) {
             Result.failure(e)
