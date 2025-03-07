@@ -5,6 +5,8 @@ import com.lurenjia534.nextonedrivev3.data.model.DriveItem
 import com.lurenjia534.nextonedrivev3.data.model.DriveResponse
 import com.lurenjia534.nextonedrivev3.data.model.Permission
 import com.lurenjia534.nextonedrivev3.data.model.CreateLinkRequest
+import com.lurenjia534.nextonedrivev3.data.model.UploadSessionResponse
+import com.lurenjia534.nextonedrivev3.data.model.UploadSessionRequest
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -15,6 +17,8 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.PUT
 import retrofit2.http.DELETE
+import retrofit2.http.Url
+import retrofit2.http.Headers
 
 interface OneDriveService {
     @GET("me/drive/root/children")
@@ -80,4 +84,42 @@ interface OneDriveService {
         @Path("itemId") itemId: String,
         @Body linkRequest: CreateLinkRequest
     ): Response<Permission>
+    
+    // 创建上传会话 - 用于大文件上传
+    @POST("me/drive/items/{parentId}:/{filename}:/createUploadSession")
+    suspend fun createUploadSession(
+        @Header("Authorization") authToken: String,
+        @Path("parentId") parentId: String,
+        @Path("filename") filename: String,
+        @Body request: UploadSessionRequest
+    ): Response<UploadSessionResponse>
+    
+    // 为根目录创建上传会话
+    @POST("me/drive/root:/{filename}:/createUploadSession")
+    suspend fun createUploadSessionForRoot(
+        @Header("Authorization") authToken: String,
+        @Path("filename") filename: String,
+        @Body request: UploadSessionRequest
+    ): Response<UploadSessionResponse>
+    
+    // 上传文件片段
+    @PUT
+    @Headers("Content-Type: application/octet-stream")
+    suspend fun uploadFileFragment(
+        @Url uploadUrl: String,
+        @Header("Content-Range") contentRange: String,
+        @Body content: RequestBody
+    ): Response<DriveItem>
+    
+    // 获取上传会话状态
+    @GET
+    suspend fun getUploadSessionStatus(
+        @Url uploadUrl: String
+    ): Response<UploadSessionResponse>
+    
+    // 取消上传会话
+    @DELETE
+    suspend fun cancelUploadSession(
+        @Url uploadUrl: String
+    ): Response<Void>
 } 
