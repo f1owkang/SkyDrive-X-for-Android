@@ -1,0 +1,5 @@
+{
+  "client_id": "<YOUR_PACKAGE_NAME>",
+  "redirect_uri": "msauth://com.lurenjia534.nextonedrivev2/<YOUR_BASE64_URL_ENCODED_PACKAGE_SIGNATURE>",
+  "broker_redirect_uri_registered": true
+}
