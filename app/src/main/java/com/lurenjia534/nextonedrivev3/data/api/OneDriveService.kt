@@ -7,6 +7,7 @@ import com.lurenjia534.nextonedrivev3.data.model.Permission
 import com.lurenjia534.nextonedrivev3.data.model.CreateLinkRequest
 import com.lurenjia534.nextonedrivev3.data.model.UploadSessionResponse
 import com.lurenjia534.nextonedrivev3.data.model.UploadSessionRequest
+import com.lurenjia534.nextonedrivev3.data.model.MoveItemRequest
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -19,6 +20,7 @@ import retrofit2.http.PUT
 import retrofit2.http.DELETE
 import retrofit2.http.Url
 import retrofit2.http.Headers
+import retrofit2.http.PATCH
 
 interface OneDriveService {
     @GET("me/drive/root/children")
@@ -122,4 +124,12 @@ interface OneDriveService {
     suspend fun cancelUploadSession(
         @Url uploadUrl: String
     ): Response<Void>
+    
+    // 添加移动项目的方法
+    @PATCH("me/drive/items/{itemId}")
+    suspend fun moveItem(
+        @Header("Authorization") authToken: String,
+        @Path("itemId") itemId: String,
+        @Body moveRequest: MoveItemRequest
+    ): Response<DriveItem>
 } 
