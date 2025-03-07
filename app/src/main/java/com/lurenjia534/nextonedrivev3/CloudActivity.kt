@@ -1133,7 +1133,7 @@ fun ProfileScreen(viewModel: CloudViewModel, accountName: String) {
 
                                     // 百分比标签
                                     Text(
-                                        text = "${String.format("%.1f", usedPercentage)}%",
+                                        text = "${String.format(Locale.US,"%.1f", usedPercentage)}%",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onPrimary,
                                         fontSize = 10.sp,
