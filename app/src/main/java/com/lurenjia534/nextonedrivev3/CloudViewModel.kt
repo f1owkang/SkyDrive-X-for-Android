@@ -503,7 +503,7 @@ class CloudViewModel @Inject constructor(
         }
     }
     
-    // 修改uploadFile方法使用进度监听
+    // 修改上传文件的方法，添加大文件上传支持
     fun uploadFile(contentResolver: ContentResolver, uri: Uri) {
         viewModelScope.launch {
             try {
@@ -514,23 +514,28 @@ class CloudViewModel @Inject constructor(
                 val fileName = getFileNameFromUri(contentResolver, uri) ?: "file_${System.currentTimeMillis()}"
                 val mimeType = getMimeType(contentResolver, uri) ?: "application/octet-stream"
                 
+                // 获取文件大小
+                val fileSize = getFileSizeFromUri(contentResolver, uri)
+                
                 // 设置初始状态
-                _uploadingState.value = UploadingState.Uploading(0, fileName, 0, 0)
+                _uploadingState.value = UploadingState.Uploading(0, fileName, 1, 1)
                 uploadNotificationService.showUploadProgressNotification(fileName, 0)
                 
-                // 读取文件内容以便使用自定义请求体
+                // 使用智能上传方法
                 val inputStream = contentResolver.openInputStream(uri)
                 if (inputStream != null) {
-                    val bytes = inputStream.readBytes()
-                    inputStream.close()
-                    
-                    // 使用自定义请求体上传
-                    val result = oneDriveRepository.uploadFileWithProgress(
+                    val result = oneDriveRepository.smartUploadFile(
                         token = token,
                         parentId = currentFolderId,
                         fileName = fileName,
-                        fileContent = ProgressRequestBody(bytes, mimeType, fileName),
-                        mimeType = mimeType
+                        inputStream = inputStream,
+                        contentType = mimeType,
+                        fileSize = fileSize,
+                        onProgress = { progress ->
+                            // 更新上传进度
+                            _uploadingState.value = UploadingState.Uploading(progress, fileName, 1, 1)
+                            uploadNotificationService.showUploadProgressNotification(fileName, progress)
+                        }
                     )
                     
                     result.onSuccess { item ->
@@ -561,7 +566,7 @@ class CloudViewModel @Inject constructor(
         }
     }
 
-    // 添加多文件上传函数
+    // 多文件上传也需要修改，使用智能上传
     fun uploadMultiplePhotos(contentResolver: ContentResolver, uris: List<Uri>) {
         viewModelScope.launch {
             try {
@@ -582,6 +587,9 @@ class CloudViewModel @Inject constructor(
                         val fileName = getFileNameFromUri(contentResolver, uri) ?: "photo_${System.currentTimeMillis()}_$index.jpg"
                         val mimeType = getMimeType(contentResolver, uri) ?: "image/jpeg"
                         
+                        // 获取文件大小
+                        val fileSize = getFileSizeFromUri(contentResolver, uri)
+                        
                         // 设置初始上传状态
                         _uploadingState.value = UploadingState.Uploading(0, fileName, index + 1, totalFiles)
                         uploadNotificationService.showUploadProgressNotification(
@@ -590,15 +598,21 @@ class CloudViewModel @Inject constructor(
                         
                         // 读取文件内容
                         contentResolver.openInputStream(uri)?.use { inputStream ->
-                            val bytes = inputStream.readBytes()
-                            
-                            // 使用自定义请求体上传
-                            val result = oneDriveRepository.uploadFileWithProgress(
+                            // 使用智能上传方法
+                            val result = oneDriveRepository.smartUploadFile(
                                 token = token,
                                 parentId = currentFolderId,
                                 fileName = fileName,
-                                fileContent = ProgressRequestBody(bytes, mimeType, fileName, index + 1, totalFiles),
-                                mimeType = mimeType
+                                inputStream = inputStream,
+                                contentType = mimeType,
+                                fileSize = fileSize,
+                                onProgress = { progress ->
+                                    // 更新上传进度
+                                    _uploadingState.value = UploadingState.Uploading(progress, fileName, index + 1, totalFiles)
+                                    uploadNotificationService.showUploadProgressNotification(
+                                        "$fileName (${index + 1}/$totalFiles)", progress
+                                    )
+                                }
                             )
                             
                             result.onSuccess {
@@ -649,6 +663,33 @@ class CloudViewModel @Inject constructor(
                 uploadNotificationService.completeUploadNotification("批量上传失败", false)
             }
         }
+    }
+
+    // 添加获取文件大小的辅助函数
+    private fun getFileSizeFromUri(contentResolver: ContentResolver, uri: Uri): Long {
+        var fileSize: Long = 0
+        
+        try {
+            contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val sizeIndex = cursor.getColumnIndex("_size")
+                    if (sizeIndex != -1) {
+                        fileSize = cursor.getLong(sizeIndex)
+                    }
+                }
+            }
+            
+            // 如果通过ContentResolver无法获取大小，尝试通过打开流获取
+            if (fileSize == 0L) {
+                contentResolver.openInputStream(uri)?.use { inputStream ->
+                    fileSize = inputStream.available().toLong()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("CloudViewModel", "获取文件大小出错: ${e.message}")
+        }
+        
+        return fileSize
     }
 
     // 添加一个更可靠的令牌刷新和重试函数
