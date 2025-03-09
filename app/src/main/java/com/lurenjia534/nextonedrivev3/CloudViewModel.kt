@@ -152,6 +152,34 @@ class CloudViewModel @Inject constructor(
         )
     )
 
+    // 添加移动状态流
+    private val _movingState = MutableStateFlow<MovingState>(MovingState.Idle)
+    val movingState: StateFlow<MovingState> = _movingState.asStateFlow()
+
+    // 移动状态封装类
+    sealed class MovingState {
+        object Idle : MovingState()
+        data class Moving(val itemName: String) : MovingState()
+        data class Success(val item: DriveItem) : MovingState()
+        data class Error(val message: String) : MovingState()
+    }
+
+    // 当前可以移动项目到的文件夹列表
+    private val _availableFolders = MutableLiveData<List<DriveItem>>(emptyList())
+    val availableFolders: LiveData<List<DriveItem>> = _availableFolders
+
+    // 加载可用文件夹的状态
+    private val _loadingFolders = MutableLiveData(false)
+    val loadingFolders: LiveData<Boolean> = _loadingFolders
+
+    // 当前在移动对话框中浏览的文件夹ID
+    private val _currentBrowseFolderId = MutableStateFlow<String>("root")
+    val currentBrowseFolderId: StateFlow<String> = _currentBrowseFolderId.asStateFlow()
+
+    // 在移动对话框中浏览的文件夹路径
+    private val _browsePathStack = MutableStateFlow<MutableList<DriveItem>>(mutableListOf())
+    val browsePathStack: StateFlow<MutableList<DriveItem>> = _browsePathStack.asStateFlow()
+
     init {
         // 加载深色模式偏好设置
         loadDarkModePreference()
@@ -280,7 +308,33 @@ class CloudViewModel @Inject constructor(
     }
     
     /**
-     * 返回上一级文件夹
+     * 在文件移动对话框中返回上一级文件夹
+     */
+    fun navigateUpInMoveDialog() {
+        val currentStack = _browsePathStack.value.toMutableList()
+        
+        if (currentStack.isNotEmpty()) {
+            // 移除当前文件夹
+            currentStack.removeAt(currentStack.size - 1)
+            _browsePathStack.value = currentStack
+            
+            // 加载上一级文件夹内容
+            val parentId = if (currentStack.isEmpty()) {
+                "root"
+            } else {
+                currentStack.last().id
+            }
+            
+            _currentBrowseFolderId.value = parentId
+            loadAvailableFolders(parentId)
+        } else {
+            // 已经在根目录，重新加载根目录
+            _currentBrowseFolderId.value = "root"
+            loadAvailableFolders("root")
+        }
+    }
+
+    /**
      * @return 是否有上级文件夹可返回
      */
     fun navigateUp(): Boolean {
@@ -295,12 +349,14 @@ class CloudViewModel @Inject constructor(
         
         // 更新当前文件夹ID
         _currentFolderId.value = if (currentStack.isEmpty()) {
-            null // 回到根目录
+            "root" // 回到根目录
         } else {
             currentStack.last().id
         }
         
+        // 重新加载文件列表
         loadCloudFiles()
+        
         return true
     }
 
@@ -808,5 +864,115 @@ class CloudViewModel @Inject constructor(
                 _sharingState.value = SharingState.Error(errorMsg)
             }
         }
+    }
+
+    /**
+     * 移动文件或文件夹
+     */
+    fun moveItem(item: DriveItem, destinationFolderId: String) {
+        viewModelScope.launch {
+            try {
+                _movingState.value = MovingState.Moving(item.name)
+                
+                val token = _accountToken.value ?: ""
+                
+                val result = oneDriveRepository.moveItem(
+                    token = token,
+                    itemId = item.id,
+                    destinationFolderId = destinationFolderId
+                )
+                
+                result.onSuccess { movedItem ->
+                    Log.d("CloudViewModel", "移动成功: ${item.name} -> 文件夹: $destinationFolderId")
+                    _movingState.value = MovingState.Success(movedItem)
+                    
+                    // 移动成功后刷新当前文件夹
+                    refreshCurrentFolder()
+                }.onFailure { error ->
+                    val errorMsg = "移动失败: ${error.message}"
+                    Log.e("CloudViewModel", errorMsg)
+                    _errorMessage.value = errorMsg
+                    _movingState.value = MovingState.Error(errorMsg)
+                    
+                    // 检查是否是token过期问题并处理
+                    if (error.message?.contains("token is expired") == true || 
+                        error.message?.contains("InvalidAuthenticationToken") == true) {
+                        refreshTokenAndRetry { moveItem(item, destinationFolderId) }
+                    }
+                }
+            } catch (e: Exception) {
+                val errorMsg = "移动时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _movingState.value = MovingState.Error(errorMsg)
+            }
+        }
+    }
+
+    /**
+     * 加载可用文件夹（修改为支持加载任意文件夹的子文件夹）
+     * @param folderId 要加载的文件夹ID，默认为根目录
+     */
+    fun loadAvailableFolders(folderId: String = "root") {
+        viewModelScope.launch {
+            try {
+                _loadingFolders.value = true
+                
+                val token = _accountToken.value ?: ""
+                
+                // 根据文件夹ID选择不同的API调用
+                val result = if (folderId == "root") {
+                    oneDriveRepository.getRootItems(token)
+                } else {
+                    oneDriveRepository.getFolderItems(token, folderId)
+                }
+                
+                result.onSuccess { items ->
+                    // 过滤出文件夹
+                    val folders = items.filter { it.folder != null }
+                    _availableFolders.value = folders
+                    _loadingFolders.value = false
+                }.onFailure { error ->
+                    val errorMsg = "加载文件夹失败: ${error.message}"
+                    Log.e("CloudViewModel", errorMsg)
+                    _errorMessage.value = errorMsg
+                    _loadingFolders.value = false
+                    
+                    // 检查是否是token过期问题并处理
+                    if (error.message?.contains("token is expired") == true || 
+                        error.message?.contains("InvalidAuthenticationToken") == true) {
+                        refreshTokenAndRetry { loadAvailableFolders(folderId) }
+                    }
+                }
+            } catch (e: Exception) {
+                val errorMsg = "加载文件夹时发生错误: ${e.message}"
+                Log.e("CloudViewModel", errorMsg, e)
+                _errorMessage.value = errorMsg
+                _loadingFolders.value = false
+            }
+        }
+    }
+
+    /**
+     * 进入子文件夹
+     */
+    fun enterFolder(folder: DriveItem) {
+        // 更新浏览路径栈
+        val currentStack = _browsePathStack.value.toMutableList()
+        currentStack.add(folder)
+        _browsePathStack.value = currentStack
+        
+        // 加载子文件夹内容
+        _currentBrowseFolderId.value = folder.id
+        loadAvailableFolders(folder.id)
+    }
+
+    /**
+     * 重置移动浏览状态
+     */
+    fun resetFolderBrowsing() {
+        _browsePathStack.value = mutableListOf()
+        _currentBrowseFolderId.value = "root"
+        _availableFolders.value = emptyList()
     }
 } 
