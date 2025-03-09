@@ -441,7 +441,7 @@ fun FilesScreen(viewModel: CloudViewModel) {
                                 contentDescription = "返回上级目录"
                             )
                         }
-                        
+
                         Text(
                             text = currentFolderStack.lastOrNull()?.name ?: "根目录",
                             style = MaterialTheme.typography.titleMedium,
@@ -449,7 +449,7 @@ fun FilesScreen(viewModel: CloudViewModel) {
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
                         )
-                        
+
                         // 刷新按钮
                         IconButton(onClick = { viewModel.refreshCurrentFolder() }) {
                             Icon(
@@ -957,23 +957,15 @@ fun FileListItem(
 fun getFileIcon(fileName: String): ImageVector {
     val extension = fileName.substringAfterLast('.', "").lowercase()
     
-    return when {
-        extension in listOf("jpg", "jpeg", "png", "gif", "bmp") -> 
-            Icons.Outlined.Image
-        extension in listOf("mp4", "avi", "mov", "wmv") -> 
-            Icons.Outlined.VideoFile
-        extension in listOf("mp3", "wav", "aac", "flac") -> 
-            Icons.Outlined.AudioFile
-        extension in listOf("pdf") -> 
-            Icons.Outlined.PictureAsPdf
-        extension in listOf("doc", "docx") -> 
-            Icons.Outlined.Description
-        extension in listOf("xls", "xlsx") -> 
-            Icons.Outlined.TableChart
-        extension in listOf("ppt", "pptx") -> 
-            Icons.Outlined.Slideshow
-        extension in listOf("zip", "rar", "7z") -> 
-            Icons.Outlined.FolderZip
+    return when (extension) {
+        in listOf("jpg", "jpeg", "png", "gif", "bmp") -> Icons.Outlined.Image
+        in listOf("mp4", "avi", "mov", "wmv") -> Icons.Outlined.VideoFile
+        in listOf("mp3", "wav", "aac", "flac") -> Icons.Outlined.AudioFile
+        in listOf("pdf") -> Icons.Outlined.PictureAsPdf
+        in listOf("doc", "docx") -> Icons.Outlined.Description
+        in listOf("xls", "xlsx") -> Icons.Outlined.TableChart
+        in listOf("ppt", "pptx") -> Icons.Outlined.Slideshow
+        in listOf("zip", "rar", "7z") -> Icons.Outlined.FolderZip
         else -> Icons.Outlined.InsertDriveFile
     }
 }
