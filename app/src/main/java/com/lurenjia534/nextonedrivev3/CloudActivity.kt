@@ -31,25 +31,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DriveFileRenameOutline
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.PieChart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.material.icons.filled.Storage
-import androidx.compose.material.icons.filled.TableChart
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Description
@@ -60,20 +50,15 @@ import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Slideshow
 import androidx.compose.material.icons.outlined.TableChart
 import androidx.compose.material.icons.outlined.VideoFile
-import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.sp
-import kotlin.text.toFloat
 import android.net.Uri
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -87,8 +72,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
-import com.lurenjia534.nextonedrivev3.CloudViewModel.UploadingState
 import kotlinx.coroutines.launch
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -103,7 +86,6 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.core.content.ContextCompat
-import com.lurenjia534.nextonedrivev3.CloudViewModel.DeletingState
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import android.content.Intent
@@ -111,18 +93,15 @@ import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.ui.unit.Dp
-import com.lurenjia534.nextonedrivev3.CloudViewModel.ShareOption
-import com.lurenjia534.nextonedrivev3.CloudViewModel.SharingState
-import com.lurenjia534.nextonedrivev3.data.model.MoveItemRequest
-import com.lurenjia534.nextonedrivev3.data.api.OneDriveService
-import com.lurenjia534.nextonedrivev3.data.repository.OneDriveRepository
-import com.lurenjia534.nextonedrivev3.CloudViewModel.MovingState
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.FolderOpen
+import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.DeletingState
+import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.MovingState
+import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.ShareOption
+import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.SharingState
+import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileUploader.UploadingState
 
 @AndroidEntryPoint
 class CloudActivity : ComponentActivity() {
