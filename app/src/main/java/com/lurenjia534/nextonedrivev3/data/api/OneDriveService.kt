@@ -8,6 +8,8 @@ import com.lurenjia534.nextonedrivev3.data.model.CreateLinkRequest
 import com.lurenjia534.nextonedrivev3.data.model.UploadSessionResponse
 import com.lurenjia534.nextonedrivev3.data.model.UploadSessionRequest
 import com.lurenjia534.nextonedrivev3.data.model.MoveItemRequest
+import com.lurenjia534.nextonedrivev3.data.model.CopyItemRequest
+import com.lurenjia534.nextonedrivev3.data.model.CopyJobResponse
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -132,4 +134,18 @@ interface OneDriveService {
         @Path("itemId") itemId: String,
         @Body moveRequest: MoveItemRequest
     ): Response<DriveItem>
+    
+    // 添加复制项目的方法
+    @POST("me/drive/items/{itemId}/copy")
+    suspend fun copyItem(
+        @Header("Authorization") authToken: String,
+        @Path("itemId") itemId: String,
+        @Body copyRequest: CopyItemRequest
+    ): Response<Void>
+    
+    // 添加获取复制作业状态的方法
+    @GET
+    suspend fun getCopyJobStatus(
+        @Url statusUrl: String
+    ): Response<CopyJobResponse>
 } 
