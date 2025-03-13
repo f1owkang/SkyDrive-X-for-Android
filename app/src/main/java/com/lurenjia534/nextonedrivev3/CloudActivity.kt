@@ -108,6 +108,14 @@ import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.MovingS
 import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.ShareOption
 import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.SharingState
 import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileUploader.UploadingState
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.DriveFileMove
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Share
+import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator
 
 @AndroidEntryPoint
 class CloudActivity : ComponentActivity() {
@@ -405,6 +413,14 @@ fun FilesScreen(viewModel: CloudViewModel) {
     // 添加获取浏览路径的状态
     val browsePathStack by viewModel.browsePathStack.collectAsState()
 
+    // 添加复制状态监听
+    val copyingState by viewModel.copyingState.collectAsState()
+    
+    // 添加复制对话框状态
+    var showCopyBottomSheet by remember { mutableStateOf(false) }
+    var selectedItemForCopy by remember { mutableStateOf<DriveItem?>(null) }
+    var showCopyNameDialog by remember { mutableStateOf(false) }
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.fillMaxSize()
@@ -536,6 +552,11 @@ fun FilesScreen(viewModel: CloudViewModel) {
                                     selectedItemForMove = item
                                     viewModel.loadAvailableFolders()
                                     showMoveBottomSheet = true
+                                },
+                                onCopyClick = {
+                                    selectedItemForCopy = item
+                                    viewModel.loadAvailableFolders()
+                                    showCopyBottomSheet = true
                                 }
                             )
                         }
@@ -765,6 +786,115 @@ fun FilesScreen(viewModel: CloudViewModel) {
                 )
             }
         }
+
+        // 添加复制进度对话框
+        when (val state = copyingState) {
+            is FileOperator.CopyingState.Copying -> {
+                AlertDialog(
+                    onDismissRequest = { /* 不允许用户取消复制进度对话框 */ },
+                    title = { Text("正在复制") },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("正在复制: ${state.itemName}")
+                            Spacer(modifier = Modifier.height(16.dp))
+                            LinearProgressIndicator(
+                                progress = { state.progress.toFloat() / 100f },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Text(
+                                text = "${state.progress.toInt()}%",
+                                modifier = Modifier.padding(top = 8.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    },
+                    confirmButton = {}, // 复制过程中没有确认按钮
+                    dismissButton = {}   // 复制过程中没有取消按钮
+                )
+            }
+            else -> { /* 其他状态不显示对话框 */ }
+        }
+        
+        // 复制状态观察
+        LaunchedEffect(copyingState) {
+            when (val state = copyingState) {
+                is FileOperator.CopyingState.Success -> {
+                    // 显示复制成功的提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = "「${state.itemName}」已复制成功",
+                            duration = SnackbarDuration.Short
+                        )
+                    }
+                }
+                is FileOperator.CopyingState.Error -> {
+                    // 显示错误提示
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(
+                            message = state.message,
+                            duration = SnackbarDuration.Long,
+                            actionLabel = "确定"
+                        )
+                    }
+                }
+                else -> { /* 其他状态不做处理 */ }
+            }
+        }
+        
+        // 使用底部表单选择复制目标位置
+        if (showCopyBottomSheet && selectedItemForCopy != null) {
+            ModalBottomSheet(
+                onDismissRequest = { 
+                    showCopyBottomSheet = false 
+                    viewModel.resetFolderBrowsing()
+                },
+                sheetState = rememberModalBottomSheetState()
+            ) {
+                CopyItemBottomSheetContent(
+                    item = selectedItemForCopy!!,
+                    folders = availableFolders,
+                    isLoading = loadingFolders,
+                    currentPath = browsePathStack,
+                    onConfirm = { destinationFolderId ->
+                        // 显示重命名对话框
+                        showCopyBottomSheet = false
+                        showCopyNameDialog = true
+                        // 在重命名对话框中确认后执行复制操作
+                    },
+                    onDirectCopy = { destinationFolderId ->
+                        // 直接复制，不重命名
+                        viewModel.copyItem(selectedItemForCopy!!, destinationFolderId)
+                        showCopyBottomSheet = false
+                        viewModel.resetFolderBrowsing()
+                    },
+                    onFolderClick = { folder ->
+                        viewModel.enterFolder(folder)
+                    },
+                    onNavigateUp = {
+                        viewModel.navigateUpInMoveDialog()
+                    }
+                )
+            }
+        }
+        
+        // 复制时重命名对话框
+        if (showCopyNameDialog && selectedItemForCopy != null) {
+            RenameForCopyDialog(
+                originalName = selectedItemForCopy!!.name,
+                onDismiss = { 
+                    showCopyNameDialog = false 
+                    selectedItemForCopy = null
+                },
+                onConfirm = { newName, destinationFolderId ->
+                    viewModel.copyItem(selectedItemForCopy!!, destinationFolderId, newName)
+                    showCopyNameDialog = false
+                    selectedItemForCopy = null
+                }
+            )
+        }
     }
 }
 
@@ -775,7 +905,8 @@ fun FileListItem(
     onShareClick: () -> Unit = {},
     onDeleteClick: () -> Unit = {},
     onDownloadClick: () -> Unit = {},
-    onMoveClick: () -> Unit = {}
+    onMoveClick: () -> Unit = {},
+    onCopyClick: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
@@ -818,7 +949,7 @@ fun FileListItem(
             Box {
                 IconButton(onClick = { showMenu = true }) {
                     Icon(
-                        imageVector = Icons.Default.MoreVert,
+                        imageVector = Icons.Rounded.MoreVert,
                         contentDescription = "更多选项"
                     )
                 }
@@ -831,7 +962,7 @@ fun FileListItem(
                         text = { Text("分享") },
                         leadingIcon = { 
                             Icon(
-                                imageVector = Icons.Default.Share,
+                                imageVector = Icons.Rounded.Share,
                                 contentDescription = null
                             )
                         },
@@ -845,7 +976,7 @@ fun FileListItem(
                         text = { Text("删除") },
                         leadingIcon = { 
                             Icon(
-                                imageVector = Icons.Default.Delete,
+                                imageVector = Icons.Rounded.Delete,
                                 contentDescription = null
                             )
                         },
@@ -859,7 +990,7 @@ fun FileListItem(
                         text = { Text("下载") },
                         leadingIcon = { 
                             Icon(
-                                imageVector = Icons.Default.Download,
+                                imageVector = Icons.Rounded.Download,
                                 contentDescription = null
                             )
                         },
@@ -873,12 +1004,26 @@ fun FileListItem(
                         text = { Text("移动到") },
                         leadingIcon = { 
                             Icon(
-                                imageVector = Icons.Default.DriveFileMove,
+                                imageVector = Icons.Rounded.DriveFileMove,
                                 contentDescription = null
                             )
                         },
                         onClick = {
                             onMoveClick()
+                            showMenu = false
+                        }
+                    )
+                    
+                    DropdownMenuItem(
+                        text = { Text("复制到") },
+                        leadingIcon = { 
+                            Icon(
+                                imageVector = Icons.Rounded.ContentCopy,
+                                contentDescription = null
+                            )
+                        },
+                        onClick = {
+                            onCopyClick()
                             showMenu = false
                         }
                     )
@@ -1674,7 +1819,7 @@ fun MoveItemBottomSheetContent(
         // "向上"按钮
         if (currentPath.isNotEmpty()) {
             ListItem(
-                headlineContent = { Text("..（上一级）") },
+                headlineContent = { Text("") },
                 leadingContent = {
                     Icon(
                         imageVector = Icons.Default.ArrowUpward,
@@ -1829,5 +1974,336 @@ fun MoveItemBottomSheetContent(
         
         // 添加底部间距，避免导航栏遮挡
         Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+// 添加复制项目的底部表单内容
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CopyItemBottomSheetContent(
+    item: DriveItem,
+    folders: List<DriveItem>,
+    isLoading: Boolean,
+    currentPath: List<DriveItem>,
+    onConfirm: (destinationFolderId: String) -> Unit,
+    onDirectCopy: (destinationFolderId: String) -> Unit,
+    onFolderClick: (folder: DriveItem) -> Unit,
+    onNavigateUp: () -> Unit
+) {
+    var selectedFolderId by remember { mutableStateOf<String?>(null) }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        // 标题
+        Text(
+            text = "复制 ${item.name}",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        // 显示当前路径
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "当前位置: ",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = if (currentPath.isEmpty()) "根目录" 
+                       else currentPath.joinToString(" / ") { it.name },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        
+        // "向上"按钮
+        if (currentPath.isNotEmpty()) {
+            ListItem(
+                headlineContent = { Text("") },
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowUpward,
+                        contentDescription = "向上",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                modifier = Modifier.clickable { onNavigateUp() }
+            )
+        }
+        
+        // 加载状态
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        } else if (folders.isEmpty() && currentPath.isEmpty()) {
+            // 空状态
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("没有可用的文件夹")
+            }
+        } else {
+            // 文件夹列表
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                // 添加根目录选项（仅在非根目录显示）
+                if (currentPath.isEmpty()) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("根目录") },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingContent = {
+                                RadioButton(
+                                    selected = selectedFolderId == "root",
+                                    onClick = { selectedFolderId = "root" }
+                                )
+                            },
+                            modifier = Modifier.clickable { selectedFolderId = "root" }
+                        )
+                    }
+                }
+                
+                // 添加当前文件夹选项
+                if (currentPath.isNotEmpty()) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("当前文件夹（${currentPath.last().name}）") },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingContent = {
+                                RadioButton(
+                                    selected = selectedFolderId == currentPath.last().id,
+                                    onClick = { selectedFolderId = currentPath.last().id }
+                                )
+                            },
+                            modifier = Modifier.clickable { selectedFolderId = currentPath.last().id }
+                        )
+                    }
+                }
+                
+                // 添加子文件夹
+                items(folders) { folder ->
+                    ListItem(
+                        headlineContent = { 
+                            Text(
+                                text = folder.name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Row {
+                                // 选择该文件夹的单选按钮
+                                RadioButton(
+                                    selected = selectedFolderId == folder.id,
+                                    onClick = { selectedFolderId = folder.id }
+                                )
+                                
+                                // 进入文件夹按钮
+                                IconButton(onClick = { onFolderClick(folder) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = "进入文件夹"
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.clickable { selectedFolderId = folder.id }
+                    )
+                }
+            }
+        }
+        
+        // 底部按钮
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(
+                onClick = { 
+                    onDirectCopy("root") 
+                },
+                enabled = false
+            ) {
+                Text("取消")
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            // 直接复制按钮（不重命名）
+            TextButton(
+                onClick = {
+                    selectedFolderId?.let { onDirectCopy(it) }
+                },
+                enabled = selectedFolderId != null
+            ) {
+                Text("直接复制")
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            // 使用新名称复制按钮
+            TextButton(
+                onClick = {
+                    selectedFolderId?.let { onConfirm(it) }
+                },
+                enabled = selectedFolderId != null
+            ) {
+                Text("复制并重命名")
+            }
+        }
+        
+        // 添加底部间距，避免导航栏遮挡
+        Spacer(modifier = Modifier.height(32.dp))
+    }
+}
+
+// 添加重命名对话框
+@Composable
+fun RenameForCopyDialog(
+    originalName: String,
+    onDismiss: () -> Unit,
+    onConfirm: (newName: String, destinationFolderId: String) -> Unit
+) {
+    var newName by remember { mutableStateOf(generateCopyName(originalName)) }
+    var isError by remember { mutableStateOf(false) }
+    var destinationFolderId by remember { mutableStateOf("") }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("重命名副本") },
+        text = {
+            Column {
+                Text(
+                    text = "请为副本输入一个新名称",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { 
+                        newName = it
+                        isError = it.isBlank() 
+                    },
+                    label = { Text("副本名称") },
+                    singleLine = true,
+                    isError = isError,
+                    supportingText = {
+                        if (isError) {
+                            Text(
+                                text = "文件名不能为空",
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (newName.isBlank()) {
+                        isError = true
+                    } else {
+                        onConfirm(newName, destinationFolderId)
+                    }
+                }
+            ) {
+                Text("确认")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+// 生成副本名称的工具函数
+fun generateCopyName(originalName: String): String {
+    val extension = if (originalName.contains(".")) {
+        "." + originalName.substringAfterLast(".")
+    } else {
+        ""
+    }
+    
+    val nameWithoutExtension = if (extension.isNotEmpty()) {
+        originalName.substringBeforeLast(".")
+    } else {
+        originalName
+    }
+    
+    // 检查是否已经包含"的副本"
+    return if (nameWithoutExtension.contains("的副本")) {
+        val pattern = Regex("""的副本(\s\(\d+\))?$""")
+        val result = pattern.find(nameWithoutExtension)
+        
+        if (result != null) {
+            // 已有"的副本"或"的副本 (数字)"
+            val countMatch = Regex("""\(\d+\)$""").find(nameWithoutExtension)
+            
+            if (countMatch != null) {
+                // 有数字，递增
+                val currentCount = countMatch.groupValues[1].toInt()
+                val newCount = currentCount + 1
+                val newName = nameWithoutExtension.replace(Regex("""\(\d+\)$"""), "($newCount)")
+                "$newName$extension"
+            } else {
+                // 没有数字，添加 (2)
+                "$nameWithoutExtension (2)$extension"
+            }
+        } else {
+            // 没有"的副本"模式，添加
+            "$nameWithoutExtension 的副本$extension"
+        }
+    } else {
+        // 没有"的副本"，添加
+        "$nameWithoutExtension 的副本$extension"
     }
 }
