@@ -33,42 +33,43 @@ class CloudViewModel @Inject constructor(
 ) : ViewModel() {
 
     // 各功能管理器
-    private val accountManager: AccountManager = AccountManager(
-        parentViewModel = this,
-        viewModelScope = viewModelScope,
-        oneDriveRepository = oneDriveRepository,
-        authViewModel = authViewModel,
-        tokenManager = tokenManager
+    private val accountManager = AccountManager(
+        this,
+        viewModelScope,
+        oneDriveRepository,
+        authViewModel,
+        tokenManager
     )
 
-    private val fileNavigator: FileNavigator = FileNavigator(
-        parentViewModel = this,
-        viewModelScope = viewModelScope,
-        oneDriveRepository = oneDriveRepository,
-        accountManager = accountManager
+    private val fileNavigator = FileNavigator(
+        this,
+        viewModelScope,
+        oneDriveRepository,
+        accountManager
     )
 
-    private val fileUploader: FileUploader = FileUploader(
-        parentViewModel = this,
-        viewModelScope = viewModelScope,
-        oneDriveRepository = oneDriveRepository,
-        uploadNotificationService = uploadNotificationService,
-        accountManager = accountManager,
-        fileNavigator = fileNavigator
+    private val fileUploader = FileUploader(
+        this,
+        viewModelScope,
+        oneDriveRepository,
+        uploadNotificationService,
+        accountManager,
+        fileNavigator,
+        context  // 添加Context参数，用于启动服务
     )
 
-    private val fileOperator: FileOperator = FileOperator(
-        parentViewModel = this,
-        viewModelScope = viewModelScope,
-        oneDriveRepository = oneDriveRepository,
-        accountManager = accountManager,
-        fileNavigator = fileNavigator
+    private val fileOperator = FileOperator(
+        this,
+        viewModelScope,
+        oneDriveRepository,
+        accountManager,
+        fileNavigator
     )
 
-    private val uiSettingsManager: UISettingsManager = UISettingsManager(
-        parentViewModel = this,
-        viewModelScope = viewModelScope,
-        context = context
+    private val uiSettingsManager = UISettingsManager(
+        this,
+        viewModelScope,
+        context
     )
 
     // 暴露各管理器的公共状态和方法
@@ -248,5 +249,15 @@ class CloudViewModel @Inject constructor(
      */
     fun resetFolderBrowsing() {
         fileNavigator.resetFolderBrowsing()
+    }
+    
+    /**
+     * 清理资源
+     */
+    override fun onCleared() {
+        super.onCleared()
+        
+        // 清理上传服务连接
+        fileUploader.onCleared()
     }
 }
