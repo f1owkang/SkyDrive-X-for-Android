@@ -223,6 +223,7 @@ fun CloudBottomNavigationBar(navController: NavController) {
 }
 
 /** 文件列表页面 */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilesScreen(viewModel: CloudViewModel) {
     val driveItems by viewModel.driveItems.observeAsState(emptyList())
@@ -392,7 +393,7 @@ fun FilesScreen(viewModel: CloudViewModel) {
     val loadingFolders by viewModel.loadingFolders.observeAsState(false)
 
     // 添加移动对话框状态
-    var showMoveDialog by remember { mutableStateOf(false) }
+    var showMoveBottomSheet by remember { mutableStateOf(false) }
     var selectedItemForMove by remember { mutableStateOf<DriveItem?>(null) }
 
     // 添加获取浏览路径的状态
@@ -528,7 +529,7 @@ fun FilesScreen(viewModel: CloudViewModel) {
                                 onMoveClick = {
                                     selectedItemForMove = item
                                     viewModel.loadAvailableFolders()
-                                    showMoveDialog = true
+                                    showMoveBottomSheet = true
                                 }
                             )
                         }
@@ -644,32 +645,6 @@ fun FilesScreen(viewModel: CloudViewModel) {
             )
         }
         
-        // 删除状态观察
-        LaunchedEffect(deletingState) {
-            when (val state = deletingState) {
-                is DeletingState.Success -> {
-                    // 显示删除成功的提示
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "「${state.itemName}」已移至回收站",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                }
-                is DeletingState.Error -> {
-                    // 显示错误提示
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = state.message,
-                            duration = SnackbarDuration.Long,
-                            actionLabel = "确定"
-                        )
-                    }
-                }
-                else -> { /* 其他状态不做处理 */ }
-            }
-        }
-        
         // 监视共享状态并处理
         LaunchedEffect(sharingState) {
             when (val state = sharingState) {
@@ -756,52 +731,33 @@ fun FilesScreen(viewModel: CloudViewModel) {
                 .padding(bottom = 80.dp) // 确保不被底部导航栏遮挡
         )
 
-        // 移动对话框
-        if (showMoveDialog && selectedItemForMove != null) {
-            MoveItemDialog(
-                item = selectedItemForMove!!,
-                folders = availableFolders,
-                isLoading = loadingFolders,
-                currentPath = browsePathStack,
-                onDismiss = { 
-                    showMoveDialog = false 
+        // 使用底部表单替代对话框
+        if (showMoveBottomSheet && selectedItemForMove != null) {
+            ModalBottomSheet(
+                onDismissRequest = { 
+                    showMoveBottomSheet = false 
                     viewModel.resetFolderBrowsing()
                 },
-                onConfirm = { destinationFolderId ->
-                    viewModel.moveItem(selectedItemForMove!!, destinationFolderId)
-                    showMoveDialog = false
-                    viewModel.resetFolderBrowsing()
-                },
-                onFolderClick = { folder ->
-                    viewModel.enterFolder(folder)
-                },
-                onNavigateUp = {
-                    viewModel.navigateUpInMoveDialog()
-                }
-            )
-        }
-
-        // 移动进度对话框
-        when (val state = movingState) {
-            is MovingState.Moving -> {
-                AlertDialog(
-                    onDismissRequest = { /* 不允许用户取消移动进度对话框 */ },
-                    title = { Text("正在移动") },
-                    text = {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("正在移动: ${state.itemName}")
-                            Spacer(modifier = Modifier.height(16.dp))
-                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                        }
+                sheetState = rememberModalBottomSheetState()
+            ) {
+                MoveItemBottomSheetContent(
+                    item = selectedItemForMove!!,
+                    folders = availableFolders,
+                    isLoading = loadingFolders,
+                    currentPath = browsePathStack,
+                    onConfirm = { destinationFolderId ->
+                        viewModel.moveItem(selectedItemForMove!!, destinationFolderId)
+                        showMoveBottomSheet = false
+                        viewModel.resetFolderBrowsing()
                     },
-                    confirmButton = {}, // 移动过程中没有确认按钮
-                    dismissButton = {}   // 移动过程中没有取消按钮
+                    onFolderClick = { folder ->
+                        viewModel.enterFolder(folder)
+                    },
+                    onNavigateUp = {
+                        viewModel.navigateUpInMoveDialog()
+                    }
                 )
             }
-            else -> { /* 其他状态不显示对话框 */ }
         }
     }
 }
@@ -1773,223 +1729,199 @@ fun ShareLinkDialog(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MoveItemDialog(
+fun MoveItemBottomSheetContent(
     item: DriveItem,
     folders: List<DriveItem>,
     isLoading: Boolean,
     currentPath: List<DriveItem>,
-    onDismiss: () -> Unit,
     onConfirm: (destinationFolderId: String) -> Unit,
     onFolderClick: (folder: DriveItem) -> Unit,
     onNavigateUp: () -> Unit
 ) {
     var selectedFolderId by remember { mutableStateOf<String?>(null) }
     
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("移动 ${item.name}") },
-        text = {
-            Column(
-                modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp)
+    ) {
+        // 标题
+        Text(
+            text = "移动 ${item.name}",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+        
+        // 显示当前路径
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "当前位置: ",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Text(
+                text = if (currentPath.isEmpty()) "根目录" 
+                       else currentPath.joinToString(" / ") { it.name },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        // "向上"按钮
+        if (currentPath.isNotEmpty()) {
+            ListItem(
+                headlineContent = { Text("..（上一级）") },
+                leadingContent = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowUpward,
+                        contentDescription = "向上",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                modifier = Modifier.clickable { onNavigateUp() }
+            )
+        }
+        
+        // 加载状态
+        if (isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // 显示当前路径
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "当前位置: ",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    
-                    Text(
-                        text = if (currentPath.isEmpty()) "根目录" 
-                               else currentPath.joinToString(" / ") { it.name },
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-                
-                // "向上"按钮
-                if (currentPath.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onNavigateUp() }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowUpward,
-                            contentDescription = "向上",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        
-                        Spacer(modifier = Modifier.width(16.dp))
-                        
-                        Text(
-                            text = "..（上一级）",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                    
-                    Divider(modifier = Modifier.padding(vertical = 4.dp))
-                }
-                
-                Text(
-                    text = "选择目标文件夹:",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 8.dp)
-                )
-                
-                if (isLoading) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator()
-                    }
-                } else if (folders.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("当前文件夹没有子文件夹")
-                    }
-                } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 300.dp)
-                    ) {
-                        // 添加根目录选项（仅在根目录显示）
-                        if (currentPath.isEmpty()) {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { selectedFolderId = "root" }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = selectedFolderId == "root",
-                                        onClick = { selectedFolderId = "root" }
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    Icon(
-                                        imageVector = Icons.Default.Folder,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    Text(
-                                        text = "根目录",
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // 添加当前文件夹选项
-                        if (currentPath.isNotEmpty()) {
-                            item {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { 
-                                            selectedFolderId = currentPath.last().id 
-                                        }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    RadioButton(
-                                        selected = selectedFolderId == currentPath.last().id,
-                                        onClick = { selectedFolderId = currentPath.last().id }
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    Icon(
-                                        imageVector = Icons.Default.FolderOpen,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                    
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    
-                                    Text(
-                                        text = "当前文件夹（${currentPath.last().name}）",
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                }
-                            }
-                        }
-                        
-                        // 添加其他文件夹，支持双功能：选择和导航
-                        items(folders) { folder ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        // 选择该文件夹
-                                        selectedFolderId = folder.id
-                                    }
-                                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                RadioButton(
-                                    selected = selectedFolderId == folder.id,
-                                    onClick = { selectedFolderId = folder.id }
-                                )
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
+                CircularProgressIndicator()
+            }
+        } else if (folders.isEmpty() && currentPath.isEmpty()) {
+            // 空状态
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("没有可用的文件夹")
+            }
+        } else {
+            // 文件夹列表
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+            ) {
+                // 添加根目录选项（仅在非根目录显示）
+                if (currentPath.isEmpty()) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("根目录") },
+                            leadingContent = {
                                 Icon(
                                     imageVector = Icons.Default.Folder,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary
                                 )
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
-                                Text(
-                                    text = folder.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    modifier = Modifier.weight(1f)
+                            },
+                            trailingContent = {
+                                RadioButton(
+                                    selected = selectedFolderId == "root",
+                                    onClick = { selectedFolderId = "root" }
+                                )
+                            },
+                            modifier = Modifier.clickable { selectedFolderId = "root" }
+                        )
+                    }
+                }
+                
+                // 添加当前文件夹选项
+                if (currentPath.isNotEmpty()) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text("当前文件夹（${currentPath.last().name}）") },
+                            leadingContent = {
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            },
+                            trailingContent = {
+                                RadioButton(
+                                    selected = selectedFolderId == currentPath.last().id,
+                                    onClick = { selectedFolderId = currentPath.last().id }
+                                )
+                            },
+                            modifier = Modifier.clickable { selectedFolderId = currentPath.last().id }
+                        )
+                    }
+                }
+                
+                // 添加子文件夹
+                items(folders) { folder ->
+                    ListItem(
+                        headlineContent = { 
+                            Text(
+                                text = folder.name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingContent = {
+                            Row {
+                                // 选择该文件夹的单选按钮
+                                RadioButton(
+                                    selected = selectedFolderId == folder.id,
+                                    onClick = { selectedFolderId = folder.id }
                                 )
                                 
                                 // 进入文件夹按钮
                                 IconButton(onClick = { onFolderClick(folder) }) {
                                     Icon(
                                         imageVector = Icons.Default.ChevronRight,
-                                        contentDescription = "进入文件夹",
-                                        tint = MaterialTheme.colorScheme.primary
+                                        contentDescription = "进入文件夹"
                                     )
                                 }
                             }
-                        }
-                    }
+                        },
+                        modifier = Modifier.clickable { selectedFolderId = folder.id }
+                    )
                 }
             }
-        },
-        confirmButton = {
+        }
+        
+        // 底部按钮
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            TextButton(
+                onClick = { 
+                    onConfirm("root") 
+                },
+                enabled = false
+            ) {
+                Text("取消")
+            }
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
             TextButton(
                 onClick = {
                     selectedFolderId?.let { onConfirm(it) }
@@ -1998,11 +1930,9 @@ fun MoveItemDialog(
             ) {
                 Text("移动")
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
         }
-    )
+        
+        // 添加底部间距，避免导航栏遮挡
+        Spacer(modifier = Modifier.height(32.dp))
+    }
 }
