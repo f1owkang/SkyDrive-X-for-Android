@@ -1,7 +1,12 @@
 package com.lurenjia534.nextonedrivev3.CloudViewModelManager
 
+import android.content.ComponentName
 import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.net.Uri
+import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -9,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import com.lurenjia534.nextonedrivev3.data.model.DriveItem
 import com.lurenjia534.nextonedrivev3.data.repository.OneDriveRepository
 import com.lurenjia534.nextonedrivev3.notification.UploadNotificationService
+import com.lurenjia534.nextonedrivev3.services.FileUploadService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +27,8 @@ class FileUploader(
     private val oneDriveRepository: OneDriveRepository,
     private val uploadNotificationService: UploadNotificationService,
     private val accountManager: AccountManager,
-    private val fileNavigator: FileNavigator
+    private val fileNavigator: FileNavigator,
+    private val context: Context // 添加Context参数，用于启动服务
 ) : BaseManager {
 
     // 上传状态封装类
@@ -40,228 +47,201 @@ class FileUploader(
     private val _errorMessage = MutableLiveData<String?>()
     val errorMessage: LiveData<String?> = _errorMessage
 
+    // 上传服务连接
+    private var uploadService: FileUploadService? = null
+    private var serviceBound = false
+
+    // 服务连接
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as FileUploadService.UploadBinder
+            uploadService = binder.getService()
+            serviceBound = true
+            Log.d("FileUploader", "已连接到上传服务")
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            uploadService = null
+            serviceBound = false
+            Log.d("FileUploader", "与上传服务断开连接")
+        }
+    }
+
+    init {
+        // 绑定服务
+        bindUploadService()
+    }
+
+    private fun bindUploadService() {
+        val intent = Intent(context, FileUploadService::class.java)
+        context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+    }
+
     /**
-     * 上传文件
+     * 上传文件 - 使用前台服务
      */
     fun uploadFile(contentResolver: ContentResolver, uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val token = accountManager.getCurrentToken() ?: ""
-                val currentFolderId = fileNavigator.currentFolderId.value ?: "root"
-
-                // 获取文件名和MIME类型
-                val fileName = getFileNameFromUri(contentResolver, uri) ?: "file_${System.currentTimeMillis()}"
-                val mimeType = getMimeType(contentResolver, uri) ?: "application/octet-stream"
-
-                // 获取文件大小
-                val fileSize = getFileSizeFromUri(contentResolver, uri)
-
-                // 设置初始状态
-                _uploadingState.value = UploadingState.Uploading(0, fileName, 1, 1)
-                uploadNotificationService.showUploadProgressNotification(fileName, 0)
-
-                // 使用智能上传方法
-                val inputStream = contentResolver.openInputStream(uri)
-                if (inputStream != null) {
-                    val result = oneDriveRepository.smartUploadFile(
-                        token = token,
-                        parentId = currentFolderId,
-                        fileName = fileName,
-                        inputStream = inputStream,
-                        contentType = mimeType,
-                        fileSize = fileSize,
-                        onProgress = { progress ->
-                            // 更新上传进度
+        try {
+            val token = accountManager.getCurrentToken() ?: ""
+            val currentFolderId = fileNavigator.currentFolderId.value ?: "root"
+            
+            // 获取文件名和MIME类型
+            val fileName = getFileNameFromUri(contentResolver, uri) ?: "file_${System.currentTimeMillis()}"
+            val mimeType = getMimeType(contentResolver, uri) ?: "application/octet-stream"
+            
+            // 获取文件大小
+            val fileSize = getFileSizeFromUri(contentResolver, uri)
+            
+            // 设置初始状态
+            _uploadingState.value = UploadingState.Uploading(0, fileName, 1, 1)
+            
+            // 启动上传服务
+            if (serviceBound && uploadService != null) {
+                // 使用已绑定的服务
+                uploadService?.uploadFile(
+                    token = token,
+                    parentId = currentFolderId,
+                    uri = uri,
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    fileSize = fileSize,
+                    onProgress = { progress ->
+                        viewModelScope.launch {
                             _uploadingState.value = UploadingState.Uploading(progress, fileName, 1, 1)
-                            uploadNotificationService.showUploadProgressNotification(fileName, progress)
                         }
-                    )
-
-                    result.onSuccess { item ->
-                        Log.d("FileUploader", "上传成功: ${item.name}")
-                        _uploadingState.value = UploadingState.Success(item)
-                        uploadNotificationService.completeUploadNotification(fileName, true)
-                        fileNavigator.refreshCurrentFolder()
-                    }.onFailure { error ->
-                        val errorMsg = "上传文件失败: ${error.message}"
-                        Log.e("FileUploader", errorMsg)
-                        _errorMessage.value = errorMsg
-                        _uploadingState.value = UploadingState.Error(errorMsg)
-                        uploadNotificationService.completeUploadNotification(fileName, false)
+                    },
+                    onSuccess = { item ->
+                        viewModelScope.launch {
+                            _uploadingState.value = UploadingState.Success(item)
+                            fileNavigator.refreshCurrentFolder()
+                        }
+                    },
+                    onError = { error ->
+                        viewModelScope.launch {
+                            val errorMsg = "上传文件失败: $error"
+                            _errorMessage.value = errorMsg
+                            _uploadingState.value = UploadingState.Error(errorMsg)
+                        }
                     }
-                } else {
-                    val errorMsg = "无法读取文件"
-                    _errorMessage.value = errorMsg
-                    _uploadingState.value = UploadingState.Error(errorMsg)
-                    uploadNotificationService.completeUploadNotification(fileName, false)
+                )
+            } else {
+                // 启动新的服务实例
+                val intent = Intent(context, FileUploadService::class.java).apply {
+                    action = FileUploadService.ACTION_UPLOAD_FILE
+                    putExtra(FileUploadService.EXTRA_TOKEN, token)
+                    putExtra(FileUploadService.EXTRA_PARENT_ID, currentFolderId)
+                    putExtra(FileUploadService.EXTRA_FILE_URI, uri.toString())
+                    putExtra(FileUploadService.EXTRA_FILE_NAME, fileName)
+                    putExtra(FileUploadService.EXTRA_MIME_TYPE, mimeType)
+                    putExtra(FileUploadService.EXTRA_FILE_SIZE, fileSize)
                 }
-            } catch (e: Exception) {
-                val errorMsg = "上传文件时发生错误: ${e.message}"
-                Log.e("FileUploader", errorMsg, e)
-                _errorMessage.value = errorMsg
-                _uploadingState.value = UploadingState.Error(errorMsg)
-                uploadNotificationService.completeUploadNotification("文件", false)
+                context.startForegroundService(intent)
+                
+                // 重新绑定服务以获取后续的进度更新
+                if (!serviceBound) {
+                    bindUploadService()
+                }
             }
+        } catch (e: Exception) {
+            val errorMsg = "启动上传服务时发生错误: ${e.message}"
+            Log.e("FileUploader", errorMsg, e)
+            _errorMessage.value = errorMsg
+            _uploadingState.value = UploadingState.Error(errorMsg)
         }
     }
 
     /**
-     * 上传照片
-     */
-    fun uploadPhoto(contentResolver: ContentResolver, uri: Uri) {
-        viewModelScope.launch {
-            try {
-                _uploadingState.value = UploadingState.Uploading(0, "", 0, 0)
-
-                val token = accountManager.getCurrentToken() ?: ""
-                val currentFolderId = fileNavigator.currentFolderId.value ?: "root"
-
-                // 添加日志
-                Log.d("FileUploader", "开始上传照片，当前文件夹ID: $currentFolderId")
-
-                // 获取文件名和MIME类型
-                val fileName = getFileNameFromUri(contentResolver, uri) ?: "photo_${System.currentTimeMillis()}.jpg"
-                val mimeType = getMimeType(contentResolver, uri) ?: "image/jpeg"
-
-                Log.d("FileUploader", "文件名: $fileName, MIME类型: $mimeType")
-
-                // 打开输入流
-                contentResolver.openInputStream(uri)?.use { inputStream ->
-                    Log.d("FileUploader", "成功打开输入流，准备上传")
-
-                    val result = oneDriveRepository.uploadPhoto(
-                        token = token,
-                        parentId = currentFolderId,
-                        fileName = fileName,
-                        inputStream = inputStream,
-                        mimeType = mimeType
-                    )
-
-                    result.onSuccess { item ->
-                        Log.d("FileUploader", "上传成功: ${item.name}")
-                        _uploadingState.value = UploadingState.Success(item)
-                        // 刷新文件列表
-                        fileNavigator.refreshCurrentFolder()
-                    }.onFailure { error ->
-                        val errorMsg = "上传照片失败: ${error.message}"
-                        Log.e("FileUploader", errorMsg)
-                        _errorMessage.value = errorMsg
-                        _uploadingState.value = UploadingState.Error(errorMsg)
-                    }
-                } ?: run {
-                    val errorMsg = "无法读取照片文件"
-                    Log.e("FileUploader", errorMsg)
-                    _errorMessage.value = errorMsg
-                    _uploadingState.value = UploadingState.Error(errorMsg)
-                }
-            } catch (e: Exception) {
-                val errorMsg = "上传照片时发生错误: ${e.message}"
-                Log.e("FileUploader", errorMsg, e)
-                _errorMessage.value = errorMsg
-                _uploadingState.value = UploadingState.Error(errorMsg)
-            }
-        }
-    }
-
-    /**
-     * 上传多个照片
+     * 上传多个照片 - 使用前台服务
      */
     fun uploadMultiplePhotos(contentResolver: ContentResolver, uris: List<Uri>) {
-        viewModelScope.launch {
-            try {
-                val token = accountManager.getCurrentToken() ?: ""
-                val currentFolderId = fileNavigator.currentFolderId.value ?: "root"
-
-                // 总文件数
-                val totalFiles = uris.size
-
-                // 记录上传成功的文件数
-                var successCount = 0
-                var failCount = 0
-
-                // 遍历每个URI进行上传
-                uris.forEachIndexed { index, uri ->
-                    try {
-                        // 获取文件名和MIME类型
-                        val fileName = getFileNameFromUri(contentResolver, uri) ?: "photo_${System.currentTimeMillis()}_$index.jpg"
-                        val mimeType = getMimeType(contentResolver, uri) ?: "image/jpeg"
-
-                        // 获取文件大小
-                        val fileSize = getFileSizeFromUri(contentResolver, uri)
-
-                        // 设置初始上传状态
-                        _uploadingState.value = UploadingState.Uploading(0, fileName, index + 1, totalFiles)
-                        uploadNotificationService.showUploadProgressNotification(
-                            "$fileName (${index + 1}/$totalFiles)", 0
-                        )
-
-                        // 读取文件内容
-                        contentResolver.openInputStream(uri)?.use { inputStream ->
-                            // 使用智能上传方法
-                            val result = oneDriveRepository.smartUploadFile(
-                                token = token,
-                                parentId = currentFolderId,
-                                fileName = fileName,
-                                inputStream = inputStream,
-                                contentType = mimeType,
-                                fileSize = fileSize,
-                                onProgress = { progress ->
-                                    // 更新上传进度
-                                    _uploadingState.value = UploadingState.Uploading(progress, fileName, index + 1, totalFiles)
-                                    uploadNotificationService.showUploadProgressNotification(
-                                        "$fileName (${index + 1}/$totalFiles)", progress
-                                    )
-                                }
-                            )
-
-                            result.onSuccess {
-                                successCount++
-                                Log.d("FileUploader", "上传成功 ($successCount/$totalFiles): ${it.name}")
-
-                                // 最后一个文件上传成功后更新UI
-                                if (index == uris.size - 1) {
-                                    _uploadingState.value = UploadingState.Success(it)
-                                    uploadNotificationService.completeUploadNotification(
-                                        "完成上传 $successCount 个文件，失败 $failCount 个", true
-                                    )
-                                    fileNavigator.refreshCurrentFolder()
-                                }
-                            }.onFailure { error ->
-                                failCount++
-                                val errorMsg = "上传失败 (${index + 1}/$totalFiles): ${error.message}"
-                                Log.e("FileUploader", errorMsg)
-                                _errorMessage.value = errorMsg
-
-                                // 如果是最后一个文件，无论成功失败都更新UI
-                                if (index == uris.size - 1) {
-                                    _uploadingState.value = UploadingState.Error(
-                                        "上传完成：$successCount 成功，$failCount 失败"
-                                    )
-                                    uploadNotificationService.completeUploadNotification(
-                                        "完成上传 $successCount 个文件，失败 $failCount 个",
-                                        successCount > 0
-                                    )
-                                    fileNavigator.refreshCurrentFolder()
-                                }
-                            }
-                        } ?: run {
-                            failCount++
-                            Log.e("FileUploader", "无法读取图片文件 (${index + 1}/$totalFiles)")
+        try {
+            val token = accountManager.getCurrentToken() ?: ""
+            val currentFolderId = fileNavigator.currentFolderId.value ?: "root"
+            
+            // 准备文件信息列表
+            val fileInfoList = uris.mapIndexed { index, uri ->
+                val fileName = getFileNameFromUri(contentResolver, uri) ?: "photo_${System.currentTimeMillis()}_$index.jpg"
+                val mimeType = getMimeType(contentResolver, uri) ?: "image/jpeg"
+                val fileSize = getFileSizeFromUri(contentResolver, uri)
+                
+                FileUploadService.FileInfo(
+                    uri = uri,
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    fileSize = fileSize
+                )
+            }
+            
+            // 设置初始状态
+            if (fileInfoList.isNotEmpty()) {
+                _uploadingState.value = UploadingState.Uploading(0, fileInfoList[0].fileName, 1, fileInfoList.size)
+            }
+            
+            // 启动上传服务
+            if (serviceBound && uploadService != null) {
+                // 使用已绑定的服务
+                uploadService?.uploadMultipleFiles(
+                    token = token,
+                    parentId = currentFolderId,
+                    fileInfoList = fileInfoList,
+                    onProgress = { progress, fileName, current, total ->
+                        viewModelScope.launch {
+                            _uploadingState.value = UploadingState.Uploading(progress, fileName, current, total)
                         }
-                    } catch (e: Exception) {
-                        failCount++
-                        Log.e("FileUploader", "处理图片出错 (${index + 1}/$totalFiles): ${e.message}")
+                    },
+                    onAllCompleted = { successCount, failCount, lastItem ->
+                        viewModelScope.launch {
+                            if (lastItem != null && successCount > 0) {
+                                _uploadingState.value = UploadingState.Success(lastItem)
+                            } else {
+                                _uploadingState.value = UploadingState.Error("上传完成：$successCount 成功，$failCount 失败")
+                            }
+                            fileNavigator.refreshCurrentFolder()
+                        }
+                    },
+                    onError = { error ->
+                        viewModelScope.launch {
+                            _errorMessage.value = error
+                        }
+                    }
+                )
+            } else {
+                // 启动新的服务实例，传递第一个文件，其余文件会在服务中处理
+                val intent = Intent(context, FileUploadService::class.java).apply {
+                    action = FileUploadService.ACTION_UPLOAD_MULTIPLE_FILES
+                    putExtra(FileUploadService.EXTRA_TOKEN, token)
+                    putExtra(FileUploadService.EXTRA_PARENT_ID, currentFolderId)
+                    putExtra(FileUploadService.EXTRA_FILE_COUNT, fileInfoList.size)
+                    
+                    // 每个文件的信息都需要单独添加
+                    fileInfoList.forEachIndexed { index, fileInfo ->
+                        putExtra("${FileUploadService.EXTRA_FILE_URI}_$index", fileInfo.uri.toString())
+                        putExtra("${FileUploadService.EXTRA_FILE_NAME}_$index", fileInfo.fileName)
+                        putExtra("${FileUploadService.EXTRA_MIME_TYPE}_$index", fileInfo.mimeType)
+                        putExtra("${FileUploadService.EXTRA_FILE_SIZE}_$index", fileInfo.fileSize)
                     }
                 }
-
-            } catch (e: Exception) {
-                val errorMsg = "批量上传图片时发生错误: ${e.message}"
-                Log.e("FileUploader", errorMsg, e)
-                _errorMessage.value = errorMsg
-                _uploadingState.value = UploadingState.Error(errorMsg)
-                uploadNotificationService.completeUploadNotification("批量上传失败", false)
+                context.startForegroundService(intent)
+                
+                // 重新绑定服务以获取后续的进度更新
+                if (!serviceBound) {
+                    bindUploadService()
+                }
             }
+        } catch (e: Exception) {
+            val errorMsg = "启动批量上传服务时发生错误: ${e.message}"
+            Log.e("FileUploader", errorMsg, e)
+            _errorMessage.value = errorMsg
+            _uploadingState.value = UploadingState.Error(errorMsg)
         }
+    }
+
+    /**
+     * 上传照片 - 使用前台服务
+     */
+    fun uploadPhoto(contentResolver: ContentResolver, uri: Uri) {
+        // 使用通用的文件上传方法
+        uploadFile(contentResolver, uri)
     }
 
     // 工具方法：从Uri获取文件名
@@ -308,5 +288,19 @@ class FileUploader(
         }
 
         return fileSize
+    }
+    
+    /**
+     * 清理资源，解绑服务
+     */
+    fun onCleared() {
+        if (serviceBound) {
+            try {
+                context.unbindService(serviceConnection)
+                serviceBound = false
+            } catch (e: Exception) {
+                Log.e("FileUploader", "解绑服务时发生错误: ${e.message}")
+            }
+        }
     }
 }
