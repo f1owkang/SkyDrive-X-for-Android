@@ -97,6 +97,12 @@ import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.ui.unit.Dp
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.DataUsage
+import androidx.compose.material.icons.outlined.DriveFileRenameOutline
+import androidx.compose.material.icons.outlined.Save
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Storage
 import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.DeletingState
 import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.MovingState
 import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator.ShareOption
@@ -932,26 +938,30 @@ fun ProfileScreen(viewModel: CloudViewModel, accountName: String) {
     val isLoading by viewModel.isDriveInfoLoading.observeAsState(false)
     val errorMessage by viewModel.errorMessage.observeAsState(null)
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
         ) {
             // 用户信息部分
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                tonalElevation = 2.dp,
-                shape = MaterialTheme.shapes.medium
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            ListItem(
+                headlineContent = { 
+                    Text(
+                        text = accountName,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        text = driveInfo?.owner?.user?.email ?: "加载中...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                leadingContent = {
                     // 用户头像
                     Surface(
                         shape = CircleShape,
@@ -969,32 +979,17 @@ fun ProfileScreen(viewModel: CloudViewModel, accountName: String) {
                             )
                         }
                     }
-
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = accountName,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-
-                        Text(
-                            text = driveInfo?.owner?.user?.email ?: "加载中...",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
+                },
+                trailingContent = {
                     IconButton(onClick = { viewModel.refreshDriveInfo() }) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
                             contentDescription = "刷新"
                         )
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
+                },
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
 
             // 错误信息
             AnimatedVisibility(
@@ -1003,262 +998,135 @@ fun ProfileScreen(viewModel: CloudViewModel, accountName: String) {
                 exit = fadeOut() + shrinkVertically()
             ) {
                 errorMessage?.let {
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.elevatedCardColors(
-                            containerColor = MaterialTheme.colorScheme.errorContainer
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                    ListItem(
+                        headlineContent = { 
+                            Text(
+                                text = it,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        leadingContent = {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onErrorContainer
+                                tint = MaterialTheme.colorScheme.error
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = it,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(24.dp))
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                        )
+                    )
                 }
             }
 
-            // 主内容
+            // 主内容 - 仅在非加载状态显示
             AnimatedVisibility(
-                visible = !isLoading,
+                visible = !isLoading && driveInfo != null,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                if (driveInfo != null) {
-                    Column {
-                        // 云盘基本信息卡片
-                        OutlinedCard (
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.elevatedCardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp)
-                            ) {
-                                InfoRow(
-                                    icon = Icons.Default.DriveFileRenameOutline,
-                                    label = "名称",
-                                    value = driveInfo!!.name
-                                )
-                                InfoRow(
-                                    icon = Icons.Default.Category,
-                                    label = "类型",
-                                    value = driveInfo!!.driveType
-                                )
-                                InfoRow(
-                                    icon = Icons.Default.Schedule,
-                                    label = "创建时间",
-                                    value = formatDate(driveInfo!!.createdDateTime ?: "")
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // 存储配额卡片
-                        driveInfo!!.quota?.let { quota ->
-                            OutlinedCard(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.elevatedCardColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp)
-                                ) {
-                                    val usedPercentage = (quota.used.toFloat() / quota.total.toFloat()) * 100
-                                    val remainingPercentage = 100 - usedPercentage
-
-                                    // 显示已用空间和总空间
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "已用 ${formatFileSize(quota.used)}",
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                        
-                                        Text(
-                                            text = "总共 ${formatFileSize(quota.total)}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    // 进度指示器
-                                    LinearProgressIndicator(
-                                        progress = { usedPercentage / 100 },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(8.dp),
-                                        color = when {
-                                            usedPercentage > 90 -> MaterialTheme.colorScheme.error
-                                            usedPercentage > 70 -> MaterialTheme.colorScheme.tertiary
-                                            else -> MaterialTheme.colorScheme.primary
-                                        },
-                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                    )
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    // 百分比展示
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(horizontalAlignment = Alignment.Start) {
-                                            Text(
-                                                text = "${String.format(Locale.US,"%.1f", usedPercentage)}%",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = when {
-                                                    usedPercentage > 90 -> MaterialTheme.colorScheme.error
-                                                    usedPercentage > 70 -> MaterialTheme.colorScheme.tertiary
-                                                    else -> MaterialTheme.colorScheme.primary
-                                                }
-                                            )
-                                            Text(
-                                                text = "已用空间",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        
-                                        Column(horizontalAlignment = Alignment.End) {
-                                            Text(
-                                                text = "${String.format(Locale.US,"%.1f", remainingPercentage)}%",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                            Text(
-                                                text = "可用空间",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    // 存储详情
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(16.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            StorageInfoItem(
-                                                label = "总容量",
-                                                value = formatFileSize(quota.total),
-                                                icon = Icons.Default.Storage,
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-
-                                            VerticalDivider(
-                                                modifier = Modifier.height(64.dp),
-                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                                                thickness = 1.dp
-                                            )
-
-                                            StorageInfoItem(
-                                                label = "已使用",
-                                                value = formatFileSize(quota.used),
-                                                icon = Icons.Default.Save,
-                                                tint = when {
-                                                    usedPercentage > 90 -> MaterialTheme.colorScheme.error
-                                                    usedPercentage > 70 -> MaterialTheme.colorScheme.tertiary
-                                                    else -> MaterialTheme.colorScheme.primary
-                                                }
-                                            )
-
-                                            VerticalDivider(
-                                                modifier = Modifier.height(64.dp),
-                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                                                thickness = 1.dp
-                                            )
-
-                                            StorageInfoItem(
-                                                label = "剩余空间",
-                                                value = formatFileSize(quota.remaining),
-                                                icon = Icons.Default.DataUsage,
-                                                tint = MaterialTheme.colorScheme.secondary
-                                            )
-                                        }
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // 无数据状态
-                    ElevatedCard(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.elevatedCardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        )
-                    ) {
+                Column {
+                    // 展示存储使用情况
+                    driveInfo?.quota?.let { quota ->
+                        val usedPercentage = (quota.used.toFloat() / quota.total.toFloat()) * 100
+                        
+                        // 存储进度条项
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CloudOff,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                text = "无法获取云盘信息",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            // 显示已用空间和总空间
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "已用 ${formatFileSize(quota.used)}",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                                
+                                Text(
+                                    text = "总共 ${formatFileSize(quota.total)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            Text(
-                                text = "请检查网络连接并点击刷新按钮重试",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                                textAlign = TextAlign.Center
+                            // 进度指示器
+                            LinearProgressIndicator(
+                                progress = { usedPercentage / 100 },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp),
+                                color = when {
+                                    usedPercentage > 90 -> MaterialTheme.colorScheme.error
+                                    usedPercentage > 70 -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
                             )
 
-                            Spacer(modifier = Modifier.height(24.dp))
-
-                            FilledTonalButton(
-                                onClick = { viewModel.refreshDriveInfo() },
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = null
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("重试")
-                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            // 百分比显示
+                            Text(
+                                text = "已使用 ${String.format(Locale.US,"%.1f", usedPercentage)}%",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = when {
+                                    usedPercentage > 90 -> MaterialTheme.colorScheme.error
+                                    usedPercentage > 70 -> MaterialTheme.colorScheme.tertiary
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
+                            )
                         }
+                        // 云盘详细信息项
+                        ListItemWithIcon(
+                            title = "总容量",
+                            subtitle = formatFileSize(quota.total),
+                            icon = Icons.Outlined.Storage,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        
+                        ListItemWithIcon(
+                            title = "已使用",
+                            subtitle = formatFileSize(quota.used),
+                            icon = Icons.Outlined.Save,
+                            tint = when {
+                                usedPercentage > 90 -> MaterialTheme.colorScheme.error
+                                usedPercentage > 70 -> MaterialTheme.colorScheme.tertiary
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+                        )
+                        
+                        ListItemWithIcon(
+                            title = "剩余空间",
+                            subtitle = formatFileSize(quota.remaining),
+                            icon = Icons.Outlined.DataUsage,
+                            tint = MaterialTheme.colorScheme.secondary
+                        )
                     }
+                    // 云盘基本信息项
+                    ListItemWithIcon(
+                        title = "名称",
+                        subtitle = driveInfo!!.name,
+                        icon = Icons.Outlined.DriveFileRenameOutline,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    ListItemWithIcon(
+                        title = "类型",
+                        subtitle = driveInfo!!.driveType,
+                        icon = Icons.Outlined.Category,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    ListItemWithIcon(
+                        title = "创建时间",
+                        subtitle = formatDate(driveInfo!!.createdDateTime),
+                        icon = Icons.Outlined.Schedule,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
@@ -1290,83 +1158,110 @@ fun ProfileScreen(viewModel: CloudViewModel, accountName: String) {
                 }
             }
             
+            // 无数据状态
+            AnimatedVisibility(
+                visible = !isLoading && driveInfo == null,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "无法获取云盘信息",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "请检查网络连接并点击刷新按钮重试",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        FilledTonalButton(
+                            onClick = { viewModel.refreshDriveInfo() }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("重试")
+                        }
+                    }
+                }
+            }
+            
             // 底部间距
             Spacer(modifier = Modifier.height(80.dp))
         }
-    }
-}
-
-@Composable
-fun InfoRow(icon: ImageVector, label: String, value: String?) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(72.dp)
-        )
-
-        Text(
-            text = value ?: "",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface
+        
+        // Snackbar主机
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp) // 确保不被底部导航栏遮挡
         )
     }
 }
 
 @Composable
-fun StorageInfoItem(label: String, value: String, icon: ImageVector, tint: Color) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(24.dp),
-            tint = tint
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-// 自定义垂直分隔线组件
-@Composable
-fun VerticalDivider(
-    modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.outlineVariant,
-    thickness: Dp = 1.dp
+fun ListItemWithIcon(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    tint: Color = MaterialTheme.colorScheme.primary,
+    onClick: (() -> Unit)? = null
 ) {
-    Box(
+    val modifier = if (onClick != null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier
+    }
+    
+    ListItem(
+        headlineContent = { 
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        },
+        supportingContent = {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        leadingContent = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint
+            )
+        },
         modifier = modifier
-            .width(thickness)
-            .background(color = color)
     )
 }
 
