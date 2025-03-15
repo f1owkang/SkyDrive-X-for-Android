@@ -1806,7 +1806,6 @@ fun MoveItemBottomSheetContent(
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold
             )
-            
             Text(
                 text = if (currentPath.isEmpty()) "根目录" 
                        else currentPath.joinToString(" / ") { it.name },
@@ -2245,7 +2244,7 @@ fun RenameForCopyDialog(
             }
         },
         confirmButton = {
-            Button(
+            TextButton(
                 onClick = {
                     if (newName.isBlank()) {
                         isError = true
