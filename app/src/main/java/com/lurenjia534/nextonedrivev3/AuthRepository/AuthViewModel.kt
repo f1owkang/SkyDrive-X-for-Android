@@ -264,10 +264,12 @@ class AuthViewModel @Inject constructor(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     fun checkAndHandleTokenExpiration(errorMessage: String?, onTokenRefreshed: () -> Unit) {
-        if (errorMessage?.contains("token is expired") == true || 
-            errorMessage?.contains("Lifetime validation failed") == true) {
+        val needsRefresh = errorMessage?.contains("token is expired") == true || 
+            errorMessage?.contains("Lifetime validation failed") == true || 
+            errorMessage == null // 当errorMessage为null时，主动检查并刷新令牌
             
-            Log.d("AuthViewModel", "检测到令牌过期，尝试刷新")
+        if (needsRefresh) {
+            Log.d("AuthViewModel", "检测到令牌需要刷新 ${errorMessage ?: "（主动刷新）"}")
             
             // 获取当前活跃账户ID
             val currentAccountId = tokenManager.getAccountId() ?: return
@@ -311,6 +313,9 @@ class AuthViewModel @Inject constructor(
                                     }
                                     tokenManager.saveMultipleAccounts(updatedAccounts)
                                     
+                                    // 刷新后更新UI显示的账户列表
+                                    _accounts.postValue(updatedAccounts)
+                                    
                                     Log.d("AuthViewModel", "令牌已成功刷新")
                                     continuation.resume(true) { 
                                         // 在协程取消时执行的代码
@@ -339,6 +344,9 @@ class AuthViewModel @Inject constructor(
                     Log.e("AuthViewModel", "令牌刷新过程中出现异常: ${e.message}")
                 }
             }
+        } else {
+            // 如果不需要刷新，直接调用回调
+            onTokenRefreshed()
         }
     }
 

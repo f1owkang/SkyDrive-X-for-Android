@@ -326,19 +326,23 @@ fun AccountCard(
 ) {
     var showDetailsDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val authViewModel: AuthViewModel = hiltViewModel()
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp, horizontal = 4.dp)
             .clickable {
-                // 启动CloudActivity
-                val intent = Intent(context, CloudActivity::class.java).apply {
-                    putExtra(CloudActivity.EXTRA_ACCOUNT_ID, account.id)
-                    putExtra(CloudActivity.EXTRA_ACCOUNT_NAME, account.name)
-                    putExtra(CloudActivity.EXTRA_ACCOUNT_TOKEN, account.token)
+                // 在启动CloudActivity前检查令牌是否过期
+                authViewModel.checkAndHandleTokenExpiration(null) {
+                    // 令牌刷新成功后启动CloudActivity
+                    val intent = Intent(context, CloudActivity::class.java).apply {
+                        putExtra(CloudActivity.EXTRA_ACCOUNT_ID, account.id)
+                        putExtra(CloudActivity.EXTRA_ACCOUNT_NAME, account.name)
+                        putExtra(CloudActivity.EXTRA_ACCOUNT_TOKEN, account.token)
+                    }
+                    context.startActivity(intent)
                 }
-                context.startActivity(intent)
             }
             .shadow(
                 elevation = 2.dp,
@@ -647,6 +651,14 @@ fun AccountDetailsDialog(
     // 获取AuthViewModel
     val authViewModel: AuthViewModel = hiltViewModel()
     
+    // 观察账户列表变化，以便在令牌刷新后更新显示
+    val accounts by authViewModel.accounts.observeAsState(emptyList())
+    
+    // 从accounts中获取最新的账户信息
+    val updatedAccount = remember(accounts) {
+        accounts.find { it.id == account.id } ?: account
+    }
+    
     // 显示复制成功消息
     showCopyMessage?.let { message ->
         LaunchedEffect(message) {
@@ -767,13 +779,13 @@ fun AccountDetailsDialog(
                 ) {
                     LabeledValue(
                         label = "访问令牌",
-                        value = account.token.take(20) + "..." + account.token.takeLast(10),
+                        value = updatedAccount.token.take(20) + "..." + updatedAccount.token.takeLast(10),
                         maxLines = 2,
                         modifier = Modifier.weight(1f)
                     )
                     IconButton(
                         onClick = {
-                            copyToClipboard(context, account.token, "访问令牌")
+                            copyToClipboard(context, updatedAccount.token, "访问令牌")
                             showCopyMessage = "访问令牌已复制到剪贴板"
                         },
                         modifier = Modifier.size(36.dp)
