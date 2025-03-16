@@ -22,15 +22,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import androidx.work.Constraints
-import androidx.work.Data
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.BackoffPolicy
-import com.lurenjia534.nextonedrivev3.R
-import java.util.concurrent.TimeUnit
+import androidx.core.content.edit
 
 // 账户数据类
 data class AccountInfo(
@@ -258,7 +250,7 @@ class AuthViewModel @Inject constructor(
         
         // 保存到SharedPreferences
         val sharedPreferences = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        sharedPreferences.edit().putBoolean("dark_mode", isDarkMode).apply()
+        sharedPreferences.edit { putBoolean("dark_mode", isDarkMode) }
         
         // 发送深色模式已更新的消息
         _authMessage.value = AuthMessage(
