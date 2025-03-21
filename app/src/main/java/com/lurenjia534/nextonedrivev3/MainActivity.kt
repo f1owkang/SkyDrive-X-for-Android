@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -39,6 +40,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Divider
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,12 +81,16 @@ import androidx.navigation.compose.rememberNavController
 import com.lurenjia534.nextonedrivev3.ui.theme.NextOneDriveV3Theme
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextDecoration
 import kotlinx.coroutines.delay
+import androidx.core.net.toUri
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -564,6 +570,8 @@ fun SettingsScreen(
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.Bold
         )
+        
+        // 外观设置标题
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -579,6 +587,7 @@ fun SettingsScreen(
                 fontWeight = FontWeight.Bold
             )
         }
+        
         // 外观设置部分
         Column(
             modifier = Modifier
@@ -627,6 +636,102 @@ fun SettingsScreen(
                         // 通过ViewModel更新深色模式状态
                         authViewModel.updateDarkMode(it) 
                     }
+                )
+            }
+        }
+        
+        // 添加关于部分的标题
+        Row(
+            modifier = Modifier.padding(top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "关于",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        
+        // 关于部分的内容
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 应用信息
+            val context = LocalContext.current
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "SkyDrive X for Android",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                "https://github.com/lurenjia534/SkyDrive-X-for-Android/".toUri())
+                            context.startActivity(intent)
+                        }
+                )
+                Text(
+                    text = "Version 2.1.0",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                "https://github.com/lurenjia534/SkyDrive-X-for-Android/".toUri())
+                            context.startActivity(intent)
+                        }
+                )
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+            )
+            
+            // 开发者信息
+            Column(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val context = LocalContext.current
+
+                Text(
+                    text = "开发者信息",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "lurenjia534 (GitHub)",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable {
+                            val intent = Intent(Intent.ACTION_VIEW,
+                                "https://github.com/lurenjia534".toUri())
+                            context.startActivity(intent)
+                        }
                 )
             }
         }
