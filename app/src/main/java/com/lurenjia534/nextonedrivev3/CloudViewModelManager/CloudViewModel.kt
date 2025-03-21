@@ -100,6 +100,7 @@ class CloudViewModel @Inject constructor(
     val deletingState: StateFlow<FileOperator.DeletingState> = fileOperator.deletingState
     val sharingState: StateFlow<FileOperator.SharingState> = fileOperator.sharingState
     val movingState: StateFlow<FileOperator.MovingState> = fileOperator.movingState
+    val copyingState: StateFlow<FileOperator.CopyingState> = fileOperator.copyingState
     val shareOptions: List<FileOperator.ShareOption> = fileOperator.shareOptions
 
     // ---------- UI设置 ----------
@@ -222,6 +223,16 @@ class CloudViewModel @Inject constructor(
     fun moveItem(item: DriveItem, destinationFolderId: String) {
         fileOperator.moveItem(item, destinationFolderId)
     }
+    
+    /**
+     * 复制文件或文件夹
+     * @param item 要复制的项目
+     * @param destinationFolderId 目标文件夹ID
+     * @param newName 可选的新名称，如果需要重命名
+     */
+    fun copyItem(item: DriveItem, destinationFolderId: String, newName: String? = null) {
+        fileOperator.copyItem(item, destinationFolderId, newName)
+    }
 
     /**
      * 加载可用文件夹（移动功能用）
@@ -260,4 +271,4 @@ class CloudViewModel @Inject constructor(
         // 清理上传服务连接
         fileUploader.onCleared()
     }
-}
+} 
