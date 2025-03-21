@@ -53,6 +53,14 @@ class FileOperator(
         val description: String // 描述，如"任何获得链接的人都可以查看，无需登录"
     )
 
+    // 复制状态
+    sealed class CopyingState {
+        object Idle : CopyingState()
+        data class Copying(val itemName: String, val progress: Double) : CopyingState()
+        data class Success(val itemName: String, val itemId: String) : CopyingState()
+        data class Error(val message: String) : CopyingState()
+    }
+
     // 删除状态流
     private val _deletingState = MutableStateFlow<DeletingState>(DeletingState.Idle)
     val deletingState: StateFlow<DeletingState> = _deletingState.asStateFlow()
@@ -64,6 +72,13 @@ class FileOperator(
     // 移动状态流
     private val _movingState = MutableStateFlow<MovingState>(MovingState.Idle)
     val movingState: StateFlow<MovingState> = _movingState.asStateFlow()
+
+    // 创建状态流来跟踪复制进度
+    private val _copyingState = MutableStateFlow<CopyingState>(CopyingState.Idle)
+    val copyingState: StateFlow<CopyingState> = _copyingState.asStateFlow()
+
+    // 复制监控URL
+    private var copyMonitorUrl: String? = null
 
     // 错误信息
     private val _errorMessage = MutableLiveData<String?>()
@@ -267,6 +282,103 @@ class FileOperator(
                 _errorMessage.value = errorMsg
                 _movingState.value = MovingState.Error(errorMsg)
             }
+        }
+    }
+
+    /**
+     * 复制文件或文件夹
+     * @param item 要复制的项目
+     * @param destinationFolderId 目标文件夹ID
+     * @param newName 可选的新名称
+     */
+    fun copyItem(item: DriveItem, destinationFolderId: String, newName: String? = null) {
+        viewModelScope.launch {
+            try {
+                _copyingState.value = CopyingState.Copying(item.name, 0.0)
+                
+                val token = accountManager.getCurrentToken()
+                if (token.isNullOrEmpty()) {
+                    _copyingState.value = CopyingState.Error("无法获取访问令牌")
+                    return@launch
+                }
+                
+                // 添加日志输出帮助调试
+                Log.d("FileOperator", "正在复制: ${item.name} 到目标文件夹: $destinationFolderId 新名称: $newName")
+                
+                // 调用复制方法
+                val result = oneDriveRepository.initiateItemCopy(
+                    token = token,
+                    itemId = item.id,
+                    destinationFolderId = destinationFolderId,
+                    newName = newName
+                )
+                
+                if (result.isSuccess) {
+                    // 获取监控URL
+                    copyMonitorUrl = result.getOrNull()
+                    if (copyMonitorUrl != null) {
+                        // 开始轮询复制状态
+                        pollCopyStatus(item.name)
+                    } else {
+                        _copyingState.value = CopyingState.Error("无法获取复制状态URL")
+                    }
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "未知错误"
+                    _copyingState.value = CopyingState.Error("复制失败: $errorMsg")
+                    _errorMessage.value = "复制失败: $errorMsg"
+                }
+            } catch (e: Exception) {
+                _copyingState.value = CopyingState.Error("复制过程出错: ${e.message}")
+                _errorMessage.value = "复制过程出错: ${e.message}"
+            }
+        }
+    }
+    
+    /**
+     * 轮询复制状态
+     */
+    private suspend fun pollCopyStatus(itemName: String) {
+        val monitorUrl = copyMonitorUrl ?: return
+        
+        try {
+            val result = oneDriveRepository.checkCopyStatus(monitorUrl)
+            
+            if (result.isSuccess) {
+                val status = result.getOrNull()
+                
+                when (status?.status) {
+                    "completed" -> {
+                        _copyingState.value = CopyingState.Success(
+                            itemName = itemName,
+                            itemId = status.resourceId ?: ""
+                        )
+                        fileNavigator.refreshCurrentFolder()
+                    }
+                    "failed" -> {
+                        val errorMsg = status.error?.message ?: "未知错误"
+                        _copyingState.value = CopyingState.Error("复制失败: $errorMsg")
+                    }
+                    "inProgress", "notStarted" -> {
+                        // 更新进度
+                        _copyingState.value = CopyingState.Copying(
+                            itemName = itemName,
+                            progress = status.percentageComplete ?: 0.0
+                        )
+                        
+                        // 延迟一段时间后再次轮询
+                        kotlinx.coroutines.delay(2000)
+                        pollCopyStatus(itemName)
+                    }
+                    else -> {
+                        _copyingState.value = CopyingState.Error("未知的复制状态: ${status?.status}")
+                    }
+                }
+            } else {
+                val errorMsg = result.exceptionOrNull()?.message ?: "未知错误"
+                _copyingState.value = CopyingState.Error("获取复制状态失败: $errorMsg")
+            }
+        } catch (e: Exception) {
+            _copyingState.value = CopyingState.Error("轮询复制状态出错: ${e.message}")
         }
     }
 }
