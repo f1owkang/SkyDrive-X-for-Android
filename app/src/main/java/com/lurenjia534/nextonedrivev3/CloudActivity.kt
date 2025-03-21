@@ -121,6 +121,7 @@ import com.lurenjia534.nextonedrivev3.CloudViewModelManager.FileOperator
 class CloudActivity : ComponentActivity() {
 
     private val cloudViewModel: CloudViewModel by viewModels()
+    private var selectedDestinationFolderId: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -420,6 +421,9 @@ fun FilesScreen(viewModel: CloudViewModel) {
     var showCopyBottomSheet by remember { mutableStateOf(false) }
     var selectedItemForCopy by remember { mutableStateOf<DriveItem?>(null) }
     var showCopyNameDialog by remember { mutableStateOf(false) }
+
+    // 将 selectedDestinationFolderId 从 Activity 移动到 Composable 中作为状态
+    var selectedDestinationFolderId by remember { mutableStateOf("") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -859,10 +863,11 @@ fun FilesScreen(viewModel: CloudViewModel) {
                     isLoading = loadingFolders,
                     currentPath = browsePathStack,
                     onConfirm = { destinationFolderId ->
+                        // 保存选定的目标文件夹ID到状态中
+                        selectedDestinationFolderId = destinationFolderId
                         // 显示重命名对话框
                         showCopyBottomSheet = false
                         showCopyNameDialog = true
-                        // 在重命名对话框中确认后执行复制操作
                     },
                     onDirectCopy = { destinationFolderId ->
                         // 直接复制，不重命名
@@ -888,11 +893,13 @@ fun FilesScreen(viewModel: CloudViewModel) {
                     showCopyNameDialog = false 
                     selectedItemForCopy = null
                 },
-                onConfirm = { newName, destinationFolderId ->
-                    viewModel.copyItem(selectedItemForCopy!!, destinationFolderId, newName)
+                onConfirm = { newName, destinationId -> 
+                    // 使用传递过来的目标文件夹ID
+                    viewModel.copyItem(selectedItemForCopy!!, destinationId, newName)
                     showCopyNameDialog = false
-                    selectedItemForCopy = null
-                }
+                },
+                // 传递保存的目标文件夹ID
+                destinationFolderId = selectedDestinationFolderId
             )
         }
     }
@@ -2205,11 +2212,11 @@ fun CopyItemBottomSheetContent(
 fun RenameForCopyDialog(
     originalName: String,
     onDismiss: () -> Unit,
-    onConfirm: (newName: String, destinationFolderId: String) -> Unit
+    onConfirm: (newName: String, destinationFolderId: String) -> Unit,
+    destinationFolderId: String
 ) {
     var newName by remember { mutableStateOf(generateCopyName(originalName)) }
     var isError by remember { mutableStateOf(false) }
-    var destinationFolderId by remember { mutableStateOf("") }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2250,8 +2257,10 @@ fun RenameForCopyDialog(
                         isError = true
                     } else {
                         onConfirm(newName, destinationFolderId)
+                        onDismiss()
                     }
-                }
+                },
+                enabled = !isError && newName.isNotBlank()
             ) {
                 Text("确认")
             }
