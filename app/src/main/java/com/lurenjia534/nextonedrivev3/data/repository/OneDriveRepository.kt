@@ -27,6 +27,8 @@ import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import com.lurenjia534.nextonedrivev3.data.model.MoveItemRequest
 import com.lurenjia534.nextonedrivev3.data.model.ParentReference
+import com.lurenjia534.nextonedrivev3.data.model.CopyItemRequest
+import com.lurenjia534.nextonedrivev3.data.model.CopyJobResponse
 
 @Singleton
 class OneDriveRepository @Inject constructor(
@@ -710,6 +712,91 @@ class OneDriveRepository @Inject constructor(
                     else -> response.code().toString()
                 }
                 Result.failure(Exception("移动失败($errorCode): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 初始化文件或文件夹的复制操作
+     * @param token 访问令牌
+     * @param itemId 要复制的项目ID
+     * @param destinationFolderId 目标文件夹ID
+     * @param newName 可选的新名称，如果需要同时重命名
+     * @return 成功时返回监控URL字符串，用于检查复制状态
+     */
+    suspend fun initiateItemCopy(
+        token: String,
+        itemId: String,
+        destinationFolderId: String,
+        newName: String? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val authToken = "Bearer $token"
+            
+            // 添加日志输出帮助调试
+            Log.d("OneDriveRepository", "复制API请求: 项目ID=$itemId, 目标文件夹=$destinationFolderId, 新名称=$newName")
+            
+            // 创建复制请求，确保提供了parentReference
+            val copyRequest = CopyItemRequest(
+                parentReference = CopyItemRequest.ParentReference(id = destinationFolderId),
+                name = newName
+            )
+            
+            val response = oneDriveService.copyItem(
+                authToken = authToken,
+                itemId = itemId,
+                copyRequest = copyRequest
+            )
+            
+            if (response.isSuccessful) {
+                // 复制是异步操作，响应头中的Location包含监控URL
+                val monitorUrl = response.headers()["Location"]
+                if (!monitorUrl.isNullOrEmpty()) {
+                    Result.success(monitorUrl)
+                } else {
+                    Result.failure(Exception("复制操作已接受，但没有提供监控URL"))
+                }
+            } else {
+                // 增强错误信息
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorCode = when (response.code()) {
+                    400 -> "请求无效"
+                    403 -> "权限不足"
+                    404 -> "找不到指定的文件或文件夹"
+                    else -> response.code().toString()
+                }
+                Result.failure(Exception("复制失败($errorCode): ${response.message()}\n详情:$errorBody"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    /**
+     * 检查复制操作的状态
+     * @param monitorUrl 从initiateItemCopy返回的监控URL
+     * @return 复制作业状态信息
+     */
+    suspend fun checkCopyStatus(
+        monitorUrl: String
+    ): Result<CopyJobResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = oneDriveService.getCopyJobStatus(monitorUrl)
+            
+            if (response.isSuccessful) {
+                val status = response.body()
+                if (status != null) {
+                    Result.success(status)
+                } else {
+                    Result.failure(Exception("获取复制状态成功但返回数据为空"))
+                }
+            } else {
+                // 增强错误信息
+                val errorBody = response.errorBody()?.string() ?: ""
+                val errorCode = response.code().toString()
+                Result.failure(Exception("获取复制状态失败($errorCode): ${response.message()}\n详情:$errorBody"))
             }
         } catch (e: Exception) {
             Result.failure(e)
