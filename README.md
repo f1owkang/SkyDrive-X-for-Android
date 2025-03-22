@@ -1,6 +1,6 @@
 # SkyDrive X for Android
 
-[English](README_EN.md) | 中文
+[English](README.md) | [中文](README_zh.md)
 
 ![Version](https://img.shields.io/badge/version-2.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
@@ -11,113 +11,113 @@
 ![Last Commit](https://img.shields.io/github/last-commit/lurenjia534/NextOneDrivev3)
 ![Lines of code](https://img.shields.io/tokei/lines/github/lurenjia534/NextOneDrivev3)
 
-## 项目简介
+## Project Introduction
 
-SkyDrive X 是一款专为 Android 设计的 OneDrive 客户端应用。它提供了丰富的云端文件管理功能，支持多账户管理，以及现代化的 Material 3 设计风格，为用户带来流畅、直观的云存储体验。
+SkyDrive X is an OneDrive client application designed specifically for Android. It provides rich cloud file management features, supports multi-account management, and adopts the modern Material 3 design style, bringing users a smooth and intuitive cloud storage experience.
 
-## 功能特性
+## Features
 
-### 多账户管理
-- 支持添加多个 OneDrive 账户
-- 账户令牌自动刷新与手动刷新
-- 账户信息管理与编辑
+### Multi-account Management
+- Support for adding multiple OneDrive accounts
+- Automatic and manual account token refresh
+- Account information management and editing
 
-### 文件管理
-- 浏览文件和文件夹层级结构
-- 创建新文件夹
-- 上传文件（支持多种文件类型）
-- 上传照片（支持多选）
-- 下载文件到本地
-- 移动文件/文件夹
-- 复制文件/文件夹（支持重命名）
-- 删除文件/文件夹
+### File Management
+- Browse files and folder hierarchy
+- Create new folders
+- Upload files (supports various file types)
+- Upload photos (supports multiple selection)
+- Download files to local storage
+- Move files/folders
+- Copy files/folders (supports renaming)
+- Delete files/folders
 
-### 共享与协作
-- 创建文件/文件夹的共享链接
-- 多种共享权限设置（只读/可编辑）
-- 共享范围控制（匿名/组织内）
-- 复制或直接分享链接
+### Sharing and Collaboration
+- Create sharing links for files/folders
+- Various sharing permission settings (read-only/editable)
+- Sharing scope control (anonymous/within organization)
+- Copy or directly share links
 
-### 云盘信息
-- 查看存储空间使用情况
-- 账户配额信息
-- 剩余空间显示
+### Cloud Drive Information
+- View storage space usage
+- Account quota information
+- Remaining space display
 
-### 用户体验
-- Material 3 设计语言
-- 深色模式支持
-- 流畅的动画和过渡效果
-- 直观的文件类型图标
+### User Experience
+- Material 3 design language
+- Dark mode support
+- Smooth animations and transition effects
+- Intuitive file type icons
 
-## 技术栈
+## Tech Stack
 
-- **编程语言**: Kotlin
-- **UI 框架**: Jetpack Compose
-- **架构模式**: MVVM
-- **依赖注入**: Hilt
-- **异步处理**: Kotlin 协程 + Flow
-- **状态管理**: LiveData + StateFlow
-- **网络请求**: Retrofit
-- **权限管理**: Android 动态权限
-- **设计规范**: Material 3
-- 
-## 系统要求
+- **Programming Language**: Kotlin
+- **UI Framework**: Jetpack Compose
+- **Architecture Pattern**: MVVM
+- **Dependency Injection**: Hilt
+- **Asynchronous Processing**: Kotlin Coroutines + Flow
+- **State Management**: LiveData + StateFlow
+- **Network Requests**: Retrofit
+- **Permission Management**: Android Dynamic Permissions
+- **Design Specification**: Material 3
 
-- Android 12.0 (API 级别 31) 或更高
-- 需要网络连接
-- 需要存储权限（用于文件上传和下载）
-- 需要通知权限（用于上传进度通知）
+## System Requirements
 
-## 使用指南
+- Android 12.0 (API level 31) or higher
+- Network connection required
+- Storage permission required (for file uploads and downloads)
+- Notification permission required (for upload progress notifications)
 
-### 添加账户
-1. 启动应用后，点击右下角的 "+" 按钮
-2. 输入账户名称（用于在应用内区分不同账户）
-3. 点击确认后，将跳转到 Microsoft 登录页面
-4. 登录 Microsoft 账户并授权应用访问 OneDrive
+## User Guide
 
-### 浏览和管理文件
-- 点击账户卡片进入该账户的云盘
-- 点击文件夹进入该文件夹
-- 点击文件操作图标（⋮）打开文件操作菜单
-- 使用底部的导航栏切换"文件列表"和"我的信息"页面
+### Adding an Account
+1. After launching the app, click the "+" button in the bottom right corner
+2. Enter an account name (for distinguishing different accounts within the app)
+3. After clicking confirm, you will be redirected to the Microsoft login page
+4. Login to your Microsoft account and authorize the app to access OneDrive
 
-### 上传文件
-1. 在文件列表页面，点击右下角"+"按钮
-2. 选择"上传照片"或"上传文件"
-3. 从设备选择要上传的文件
-4. 查看上传进度条
+### Browsing and Managing Files
+- Click on an account card to enter that account's cloud drive
+- Click on a folder to enter that folder
+- Click on the file action icon (⋮) to open the file operation menu
+- Use the bottom navigation bar to switch between "File List" and "My Information" pages
 
-### 共享文件
-1. 在文件列表中，点击文件右侧的操作菜单
-2. 选择"分享"选项
-3. 选择共享权限和范围
-4. 复制或分享生成的链接
+### Uploading Files
+1. On the file list page, click the "+" button in the bottom right corner
+2. Select "Upload Photo" or "Upload File"
+3. Choose the file you want to upload from your device
+4. View the upload progress bar
 
-## 自定义与设置
+### Sharing Files
+1. In the file list, click on the action menu to the right of the file
+2. Select the "Share" option
+3. Choose sharing permissions and scope
+4. Copy or share the generated link
 
-- 在"设置"页面可切换深色模式
-- 自定义账户名称可在账户详情页完成
+## Customization and Settings
 
-## 贡献指南
+- Toggle dark mode on the "Settings" page
+- Customize account names on the account details page
 
-欢迎提交 Pull Request 或创建 Issue 来帮助改进项目。请遵循以下步骤：
+## Contribution Guidelines
 
-1. Fork 项目
-2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add some amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
+Pull Requests or Issues are welcome to help improve the project. Please follow these steps:
 
-## 许可证
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Create a Pull Request
 
-本项目采用 Apache LicenseVersion 2.0 许可证 - 详情请参阅 [LICENSE](LICENSE) 文件
+## License
 
-## 联系方式
+This project is licensed under the Apache License Version 2.0 - see the [LICENSE](LICENSE) file for details
+
+## Contact
 
 GitHub: [lurenjia534](https://github.com/lurenjia534)
 
 ---
 
-*注：此应用为第三方非官方 OneDrive 客户端，非 Microsoft 官方产品。*
+*Note: This application is a third-party unofficial OneDrive client, not an official Microsoft product.*
 
