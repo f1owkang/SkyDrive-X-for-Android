@@ -1556,7 +1556,7 @@ fun CreateFolderDialog(
             }
         },
         confirmButton = {
-            Button(
+            TextButton(
                 onClick = {
                     if (folderName.isBlank()) {
                         isError = true
