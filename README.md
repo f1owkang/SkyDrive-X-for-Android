@@ -1,6 +1,6 @@
 # SkyDrive X for Android
 
-# SkyDrive X for Android
+[English](README_EN.md) | 中文
 
 ![Version](https://img.shields.io/badge/version-2.2.0-blue)
 ![Platform](https://img.shields.io/badge/platform-Android-brightgreen)
@@ -120,3 +120,4 @@ GitHub: [lurenjia534](https://github.com/lurenjia534)
 ---
 
 *注：此应用为第三方非官方 OneDrive 客户端，非 Microsoft 官方产品。*
+
