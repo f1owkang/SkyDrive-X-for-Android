@@ -56,6 +56,14 @@ git clone https://github.com/lurenjia534/SkyDrive-X-for-Android
 
 SkyDrive X 是一款专为 Android 设计的 OneDrive 客户端应用。它提供了丰富的云端文件管理功能，支持多账户管理，以及现代化的 Material 3 设计风格，为用户带来流畅、直观的云存储体验。
 
+## 截图展示
+
+![1](image/1.png)
+![2](image/2.png)
+![3](image/3.png)
+![4](image/4.png)
+![5](image/5.png)
+
 ## 功能特性
 
 ### 多账户管理
