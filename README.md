@@ -37,7 +37,7 @@ Find the following in the project's `AndroidManifest.xml`
 
 Replace `<YOUR_BASE64_ENCODED_PACKAGE_SIGNATURE>` with the Base64 encoded hash value of your application's signing certificate
 
-### 下一步
+### Next step
 
 ```json
 {
