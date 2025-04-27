@@ -11,6 +11,49 @@
 ![Last Commit](https://img.shields.io/github/last-commit/lurenjia534/NextOneDrivev3)
 ![Lines of code](https://img.shields.io/tokei/lines/github/lurenjia534/NextOneDrivev3)
 
+## Currently, the project only supports self-building
+
+
+```bash
+git clone https://github.com/lurenjia534/SkyDrive-X-for-Android
+```
+
+Find the following in the project's `AndroidManifest.xml`
+
+```
+<activity android:name="com.microsoft.identity.client.BrowserTabActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="com.lurenjia534.nextonedrivev2"
+                    android:path="/<YOUR_BASE64_ENCODED_PACKAGE_SIGNATURE>"
+                    android:scheme="msauth" />
+            </intent-filter>
+        </activity>
+```
+
+Replace `<YOUR_BASE64_ENCODED_PACKAGE_SIGNATURE>` with the Base64 encoded hash value of your application's signing certificate
+
+### 下一步
+
+```json
+{
+  "client_id": "<YOUR_PACKAGE_NAME>",
+  "redirect_uri": "msauth://com.lurenjia534.nextonedrivev2/<YOUR_BASE64_URL_ENCODED_PACKAGE_SIGNATURE>",
+  "broker_redirect_uri_registered": true
+}
+
+```
+
+Where `<YOUR_PACKAGE_NAME>` is your client ID 
+Replace `<YOUR_BASE64_URL_ENCODED_PACKAGE_SIGNATURE>` with the Base64 URL-safe encoded hash value of your application's signing certificate
+
+
+### 下一步您需要配置自己的 Azure 应用程序
+
 ## Project Introduction
 
 SkyDrive X is an OneDrive client application designed specifically for Android. It provides rich cloud file management features, supports multi-account management, and adopts the modern Material 3 design style, bringing users a smooth and intuitive cloud storage experience.
