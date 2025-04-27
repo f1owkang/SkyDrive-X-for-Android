@@ -52,11 +52,19 @@ Where `<YOUR_PACKAGE_NAME>` is your client ID
 Replace `<YOUR_BASE64_URL_ENCODED_PACKAGE_SIGNATURE>` with the Base64 URL-safe encoded hash value of your application's signing certificate
 
 
-### 下一步您需要配置自己的 Azure 应用程序
+### Next step you need to configure your own Azure application
 
 ## Project Introduction
 
 SkyDrive X is an OneDrive client application designed specifically for Android. It provides rich cloud file management features, supports multi-account management, and adopts the modern Material 3 design style, bringing users a smooth and intuitive cloud storage experience.
+
+## Screenshot display
+
+![1](image/1.png)
+![2](image/2.png)
+![3](image/3.png)
+![4](image/4.png)
+![5](image/5.png)
 
 ## Features
 
