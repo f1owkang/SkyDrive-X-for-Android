@@ -15,7 +15,7 @@ android {
         minSdk = 31
         targetSdk = 35
         versionCode = 1
-        versionName = "2.2"
+        versionName = "2.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -48,7 +48,7 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:2.51.1")
     // other
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    implementation("androidx.navigation:navigation-compose:2.8.9")
+    implementation("androidx.navigation:navigation-compose:2.9.0")
     // http request library
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-gson:2.11.0")
